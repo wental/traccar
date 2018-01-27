@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Anton Tananaev (anton@traccar.org)
+ * Copyright 2013 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
     private static final Pattern PATTERN_POSITION = new PatternBuilder()
             .number("#(x+)?")                    // cell info
             .text("$GPRMC,")
-            .number("(dd)(dd)(dd).(d+),")        // time
+            .number("(dd)(dd)(dd).d+,")          // time (hhmmss.sss)
             .expression("([AV]),")               // validity
             .number("(d+)(dd.d+),")              // latitude
             .expression("([NS]),")
@@ -56,6 +56,45 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
             .number("(dd)(dd)(dd)")              // date (ddmmyy)
             .any()
             .compile();
+
+    private void decodeStatus(Position position, String status) {
+        switch (status) {
+            case "AUTOSTART":
+            case "AUTO":
+                position.set(Position.KEY_IGNITION, true);
+                break;
+            case "AUTOSTOP":
+            case "AUTOLOW":
+                position.set(Position.KEY_IGNITION, false);
+                break;
+            case "TOWED":
+                position.set(Position.KEY_ALARM, Position.ALARM_TOW);
+                break;
+            case "SOS":
+                position.set(Position.KEY_ALARM, Position.ALARM_SOS);
+                break;
+            case "DEF":
+                position.set(Position.KEY_ALARM, Position.ALARM_POWER_CUT);
+                break;
+            case "BLP":
+                position.set(Position.KEY_ALARM, Position.ALARM_LOW_BATTERY);
+                break;
+            case "CLP":
+                position.set(Position.KEY_ALARM, Position.ALARM_LOW_POWER);
+                break;
+            case "OS":
+                position.set(Position.KEY_ALARM, Position.ALARM_GEOFENCE_EXIT);
+                break;
+            case "RS":
+                position.set(Position.KEY_ALARM, Position.ALARM_GEOFENCE_ENTER);
+                break;
+            case "OVERSPEED":
+                position.set(Position.KEY_ALARM, Position.ALARM_OVERSPEED);
+                break;
+            default:
+                break;
+        }
+    }
 
     @Override
     protected Object decode(
@@ -84,26 +123,24 @@ public class Tlt2hProtocolDecoder extends BaseProtocolDecoder {
             parser = new Parser(PATTERN_POSITION, message);
             if (parser.matches()) {
 
-                Position position = new Position();
-                position.setProtocol(getProtocolName());
+                Position position = new Position(getProtocolName());
                 position.setDeviceId(deviceSession.getDeviceId());
 
                 parser.next(); // base station info
 
                 DateBuilder dateBuilder = new DateBuilder()
-                        .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-                parser.next();
+                        .setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
                 position.setValid(parser.next().equals("A"));
                 position.setLatitude(parser.nextCoordinate());
                 position.setLongitude(parser.nextCoordinate());
-                position.setSpeed(parser.nextDouble());
-                position.setCourse(parser.nextDouble());
+                position.setSpeed(parser.nextDouble(0));
+                position.setCourse(parser.nextDouble(0));
 
-                dateBuilder.setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
+                dateBuilder.setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
                 position.setTime(dateBuilder.getDate());
 
-                position.set(Position.KEY_STATUS, status);
+                decodeStatus(position, status);
 
                 positions.add(position);
             }

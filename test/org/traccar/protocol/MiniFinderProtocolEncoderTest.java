@@ -1,9 +1,10 @@
 package org.traccar.protocol;
 
-import org.junit.Assert;
 import org.junit.Test;
 import org.traccar.ProtocolTest;
 import org.traccar.model.Command;
+
+import static org.junit.Assert.assertEquals;
 
 public class MiniFinderProtocolEncoderTest extends ProtocolTest {
 
@@ -11,13 +12,13 @@ public class MiniFinderProtocolEncoderTest extends ProtocolTest {
     public void testEncode() throws Exception {
 
         MiniFinderProtocolEncoder encoder = new MiniFinderProtocolEncoder();
-        
+
         Command command = new Command();
         command.setDeviceId(1);
         command.setType(Command.TYPE_SET_TIMEZONE);
-        command.set(Command.KEY_TIMEZONE, 3600);
-        
-        Assert.assertEquals("123456L+01", encoder.encodeCommand(command));
+        command.set(Command.KEY_TIMEZONE, "GMT+1");
+
+        assertEquals("123456L+01", encoder.encodeCommand(command));
 
         command = new Command();
         command.setDeviceId(1);
@@ -25,7 +26,7 @@ public class MiniFinderProtocolEncoderTest extends ProtocolTest {
         command.set(Command.KEY_INDEX, 2);
         command.set(Command.KEY_PHONE, "1111111111");
 
-        Assert.assertEquals("123456C1,1111111111", encoder.encodeCommand(command));
+        assertEquals("123456C1,1111111111", encoder.encodeCommand(command));
 
     }
 

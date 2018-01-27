@@ -23,6 +23,8 @@ import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
 import org.traccar.helper.BitUtil;
 import org.traccar.helper.DateBuilder;
+import org.traccar.model.CellTower;
+import org.traccar.model.Network;
 import org.traccar.model.Position;
 
 import java.net.SocketAddress;
@@ -60,15 +62,14 @@ public class AutoFonProtocolDecoder extends BaseProtocolDecoder {
 
     private Position decodePosition(DeviceSession deviceSession, ChannelBuffer buf, boolean history) {
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
         if (!history) {
             buf.readUnsignedByte(); // interval
             buf.skipBytes(8); // settings
         }
-        buf.readUnsignedByte(); // status
+        position.set(Position.KEY_STATUS, buf.readUnsignedByte());
         if (!history) {
             buf.readUnsignedShort();
         }
@@ -84,11 +85,12 @@ public class AutoFonProtocolDecoder extends BaseProtocolDecoder {
         }
 
         position.set(Position.PREFIX_TEMP + 1, buf.readByte());
-        position.set(Position.KEY_RSSI, buf.readUnsignedByte());
-        buf.readUnsignedShort(); // mcc
-        buf.readUnsignedShort(); // mnc
-        buf.readUnsignedShort(); // lac
-        buf.readUnsignedShort(); // cid
+
+        int rssi = buf.readUnsignedByte();
+        CellTower cellTower = CellTower.from(
+                buf.readUnsignedShort(), buf.readUnsignedShort(),
+                buf.readUnsignedShort(), buf.readUnsignedShort(), rssi);
+        position.setNetwork(new Network(cellTower));
 
         int valid = buf.readUnsignedByte();
         position.setValid((valid & 0xc0) != 0);
@@ -164,8 +166,7 @@ public class AutoFonProtocolDecoder extends BaseProtocolDecoder {
 
         } else if (type == MSG_45_LOCATION) {
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
 
             short status = buf.readUnsignedByte();

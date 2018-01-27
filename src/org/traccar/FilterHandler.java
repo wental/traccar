@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2014 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
  */
 package org.traccar;
 
-import org.traccar.helper.DistanceCalculator;
 import org.traccar.helper.Log;
+import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Position;
 
 public class FilterHandler extends BaseDataHandler {
@@ -24,11 +24,13 @@ public class FilterHandler extends BaseDataHandler {
     private boolean filterInvalid;
     private boolean filterZero;
     private boolean filterDuplicate;
+    private long filterFuture;
     private boolean filterApproximate;
     private boolean filterStatic;
     private int filterDistance;
-    private long filterLimit;
-    private long filterFuture;
+    private int filterMaxSpeed;
+    private long skipLimit;
+    private boolean skipAttributes;
 
     public void setFilterInvalid(boolean filterInvalid) {
         this.filterInvalid = filterInvalid;
@@ -40,6 +42,10 @@ public class FilterHandler extends BaseDataHandler {
 
     public void setFilterDuplicate(boolean filterDuplicate) {
         this.filterDuplicate = filterDuplicate;
+    }
+
+    public void setFilterFuture(long filterFuture) {
+        this.filterFuture = filterFuture;
     }
 
     public void setFilterApproximate(boolean filterApproximate) {
@@ -54,12 +60,16 @@ public class FilterHandler extends BaseDataHandler {
         this.filterDistance = filterDistance;
     }
 
-    public void setFilterLimit(long filterLimit) {
-        this.filterLimit = filterLimit;
+    public void setFilterMaxSpeed(int filterMaxSpeed) {
+        this.filterMaxSpeed = filterMaxSpeed;
     }
 
-    public void setFilterFuture(long filterFuture) {
-        this.filterFuture = filterFuture;
+    public void setSkipLimit(long skipLimit) {
+        this.skipLimit = skipLimit;
+    }
+
+    public void setSkipAttributes(boolean skipAttributes) {
+        this.skipAttributes = skipAttributes;
     }
 
     public FilterHandler() {
@@ -68,40 +78,36 @@ public class FilterHandler extends BaseDataHandler {
             filterInvalid = config.getBoolean("filter.invalid");
             filterZero = config.getBoolean("filter.zero");
             filterDuplicate = config.getBoolean("filter.duplicate");
+            filterFuture = config.getLong("filter.future") * 1000;
             filterApproximate = config.getBoolean("filter.approximate");
             filterStatic = config.getBoolean("filter.static");
             filterDistance = config.getInteger("filter.distance");
-            filterLimit = config.getLong("filter.limit") * 1000;
-            filterFuture = config.getLong("filter.future") * 1000;
+            filterMaxSpeed = config.getInteger("filter.maxSpeed");
+            skipLimit = config.getLong("filter.skipLimit") * 1000;
+            skipAttributes = config.getBoolean("filter.skipAttributes.enable");
         }
-    }
-
-    private Position getLastPosition(long deviceId) {
-        if (Context.getIdentityManager() != null) {
-            return Context.getIdentityManager().getLastPosition(deviceId);
-        }
-        return null;
     }
 
     private boolean filterInvalid(Position position) {
-        return filterInvalid && !position.getValid();
+        return filterInvalid && (!position.getValid()
+           || position.getLatitude() > 90 || position.getLongitude() > 180
+           || position.getLatitude() < -90 || position.getLongitude() < -180);
     }
 
     private boolean filterZero(Position position) {
         return filterZero && position.getLatitude() == 0.0 && position.getLongitude() == 0.0;
     }
 
-    private boolean filterDuplicate(Position position) {
-        if (filterDuplicate) {
-            Position last = getLastPosition(position.getDeviceId());
-            if (last != null) {
-                return position.getFixTime().equals(last.getFixTime());
-            } else {
-                return false;
+    private boolean filterDuplicate(Position position, Position last) {
+        if (filterDuplicate && last != null && position.getFixTime().equals(last.getFixTime())) {
+            for (String key : position.getAttributes().keySet()) {
+                if (!last.getAttributes().containsKey(key)) {
+                    return false;
+                }
             }
-        } else {
-            return false;
+            return true;
         }
+        return false;
     }
 
     private boolean filterFuture(Position position) {
@@ -109,46 +115,61 @@ public class FilterHandler extends BaseDataHandler {
     }
 
     private boolean filterApproximate(Position position) {
-        Boolean approximate = position.getBoolean(Position.KEY_APPROXIMATE);
-        return filterApproximate && approximate != null && approximate;
+        return filterApproximate && position.getBoolean(Position.KEY_APPROXIMATE);
     }
 
     private boolean filterStatic(Position position) {
         return filterStatic && position.getSpeed() == 0.0;
     }
 
-    private boolean filterDistance(Position position) {
-        if (filterDistance != 0) {
-            Position last = getLastPosition(position.getDeviceId());
-            if (last != null) {
-                double distance = DistanceCalculator.distance(
-                        position.getLatitude(), position.getLongitude(),
-                        last.getLatitude(), last.getLongitude());
-                return distance < filterDistance;
-            } else {
-                return false;
-            }
-        } else {
-            return false;
+    private boolean filterDistance(Position position, Position last) {
+        if (filterDistance != 0 && last != null) {
+            return position.getDouble(Position.KEY_DISTANCE) < filterDistance;
         }
+        return false;
     }
 
-    private boolean filterLimit(Position position) {
-        if (filterLimit != 0) {
-            Position last = getLastPosition(position.getDeviceId());
-            if (last != null) {
-                return (position.getFixTime().getTime() - last.getFixTime().getTime()) > filterLimit;
-            } else {
-                return false;
-            }
-        } else {
-            return false;
+    private boolean filterMaxSpeed(Position position, Position last) {
+        if (filterMaxSpeed != 0 && last != null) {
+            double distance = position.getDouble(Position.KEY_DISTANCE);
+            double time = position.getFixTime().getTime() - last.getFixTime().getTime();
+            return UnitsConverter.knotsFromMps(distance / (time / 1000)) > filterMaxSpeed;
         }
+        return false;
+    }
+
+    private boolean skipLimit(Position position, Position last) {
+        if (skipLimit != 0 && last != null) {
+            return (position.getServerTime().getTime() - last.getServerTime().getTime()) > skipLimit;
+        }
+        return false;
+    }
+
+    private boolean skipAttributes(Position position) {
+        if (skipAttributes) {
+            String attributesString = Context.getIdentityManager().lookupAttributeString(
+                    position.getDeviceId(), "filter.skipAttributes", "", true);
+            for (String attribute : attributesString.split("[ ,]")) {
+                if (position.getAttributes().containsKey(attribute)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private boolean filter(Position position) {
 
         StringBuilder filterType = new StringBuilder();
+
+        Position last = null;
+        if (Context.getIdentityManager() != null) {
+            last = Context.getIdentityManager().getLastPosition(position.getDeviceId());
+        }
+
+        if (skipLimit(position, last) || skipAttributes(position)) {
+            return false;
+        }
 
         if (filterInvalid(position)) {
             filterType.append("Invalid ");
@@ -156,7 +177,7 @@ public class FilterHandler extends BaseDataHandler {
         if (filterZero(position)) {
             filterType.append("Zero ");
         }
-        if (filterDuplicate(position)) {
+        if (filterDuplicate(position, last)) {
             filterType.append("Duplicate ");
         }
         if (filterFuture(position)) {
@@ -168,17 +189,20 @@ public class FilterHandler extends BaseDataHandler {
         if (filterStatic(position)) {
             filterType.append("Static ");
         }
-        if (filterDistance(position)) {
+        if (filterDistance(position, last)) {
             filterType.append("Distance ");
         }
+        if (filterMaxSpeed(position, last)) {
+            filterType.append("MaxSpeed ");
+        }
 
-        if (filterType.length() > 0 && !filterLimit(position)) {
+        if (filterType.length() > 0) {
 
             StringBuilder message = new StringBuilder();
             message.append("Position filtered by ");
             message.append(filterType.toString());
             message.append("filters from device: ");
-            message.append(Context.getIdentityManager().getDeviceById(position.getDeviceId()).getUniqueId());
+            message.append(Context.getIdentityManager().getById(position.getDeviceId()).getUniqueId());
             message.append(" with id: ");
             message.append(position.getDeviceId());
 

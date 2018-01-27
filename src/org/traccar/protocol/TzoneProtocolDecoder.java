@@ -43,9 +43,9 @@ public class TzoneProtocolDecoder extends BaseProtocolDecoder {
             case 0x11:
                 return Position.ALARM_OVERSPEED;
             case 0x14:
-                return Position.ALARM_BREAKING;
+                return Position.ALARM_BRAKING;
             case 0x15:
-                return Position.ALARM_ACCELETATION;
+                return Position.ALARM_ACCELERATION;
             case 0x30:
                 return Position.ALARM_PARKING;
             case 0x42:
@@ -119,8 +119,8 @@ public class TzoneProtocolDecoder extends BaseProtocolDecoder {
         if (buf.readUnsignedShort() != 0x2424) {
             return null;
         }
-        int hardware = buf.readUnsignedShort(); // model
-        buf.readUnsignedInt(); // firmware
+        int hardware = buf.readUnsignedShort();
+        long firmware = buf.readUnsignedInt();
 
         String imei = ChannelBuffers.hexDump(buf.readBytes(8)).substring(1);
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, imei);
@@ -128,9 +128,11 @@ public class TzoneProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
+
+        position.set(Position.KEY_VERSION_HW, hardware);
+        position.set(Position.KEY_VERSION_FW, firmware);
 
         position.setDeviceTime(new DateBuilder()
                 .setDate(buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte())
@@ -199,10 +201,19 @@ public class TzoneProtocolDecoder extends BaseProtocolDecoder {
 
         if (blockLength >= 13) {
             position.set(Position.KEY_ALARM, decodeAlarm(buf.readUnsignedByte()));
-            buf.readUnsignedByte(); // terminal info
-            position.set(Position.PREFIX_IO + 1, buf.readUnsignedShort());
+            position.set("terminalInfo", buf.readUnsignedByte());
+
+            int status = buf.readUnsignedByte();
+            position.set(Position.PREFIX_OUT + 1, BitUtil.check(status, 0));
+            position.set(Position.PREFIX_OUT + 2, BitUtil.check(status, 1));
+            status = buf.readUnsignedByte();
+            position.set(Position.PREFIX_IN + 1, BitUtil.check(status, 4));
+            if (BitUtil.check(status, 0)) {
+                position.set(Position.KEY_ALARM, Position.ALARM_SOS);
+            }
+
             position.set(Position.KEY_RSSI, buf.readUnsignedByte());
-            buf.readUnsignedByte(); // GSM status
+            position.set("gsmStatus", buf.readUnsignedByte());
             position.set(Position.KEY_BATTERY, buf.readUnsignedShort());
             position.set(Position.KEY_POWER, buf.readUnsignedShort());
             position.set(Position.PREFIX_ADC + 1, buf.readUnsignedShort());

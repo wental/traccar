@@ -25,8 +25,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 
-import org.joda.time.DateTime;
-import org.jxls.transform.poi.PoiTransformer;
 import org.jxls.util.JxlsHelper;
 import org.traccar.Context;
 import org.traccar.model.Position;
@@ -40,7 +38,7 @@ public final class Summary {
     private static SummaryReport calculateSummaryResult(long deviceId, Date from, Date to) throws SQLException {
         SummaryReport result = new SummaryReport();
         result.setDeviceId(deviceId);
-        result.setDeviceName(Context.getIdentityManager().getDeviceById(deviceId).getName());
+        result.setDeviceName(Context.getIdentityManager().getById(deviceId).getName());
         Collection<Position> positions = Context.getDataManager().getPositions(deviceId, from, to);
         if (positions != null && !positions.isEmpty()) {
             Position firstPosition = null;
@@ -63,12 +61,14 @@ public final class Summary {
                     .lookupAttributeBoolean(deviceId, "report.ignoreOdometer", false, true);
             result.setDistance(ReportUtils.calculateDistance(firstPosition, previousPosition, !ignoreOdometer));
             result.setAverageSpeed(speedSum / positions.size());
+            result.setSpentFuel(ReportUtils.calculateFuel(firstPosition, previousPosition));
         }
         return result;
     }
 
     public static Collection<SummaryReport> getObjects(long userId, Collection<Long> deviceIds,
             Collection<Long> groupIds, Date from, Date to) throws SQLException {
+        ReportUtils.checkPeriodLimit(from, to);
         ArrayList<SummaryReport> result = new ArrayList<>();
         for (long deviceId: ReportUtils.getDeviceList(deviceIds, groupIds)) {
             Context.getPermissionsManager().checkDevice(userId, deviceId);
@@ -79,18 +79,16 @@ public final class Summary {
 
     public static void getExcel(OutputStream outputStream,
             long userId, Collection<Long> deviceIds, Collection<Long> groupIds,
-            DateTime from, DateTime to) throws SQLException, IOException {
-        Collection<SummaryReport> summaries = getObjects(userId, deviceIds, groupIds, from.toDate(), to.toDate());
+            Date from, Date to) throws SQLException, IOException {
+        ReportUtils.checkPeriodLimit(from, to);
+        Collection<SummaryReport> summaries = getObjects(userId, deviceIds, groupIds, from, to);
         String templatePath = Context.getConfig().getString("report.templatesPath",
                 "templates/export/");
         try (InputStream inputStream = new FileInputStream(templatePath + "/summary.xlsx")) {
-            org.jxls.common.Context jxlsContext = PoiTransformer.createInitialContext();
+            org.jxls.common.Context jxlsContext = ReportUtils.initializeContext(userId);
             jxlsContext.putVar("summaries", summaries);
             jxlsContext.putVar("from", from);
             jxlsContext.putVar("to", to);
-            jxlsContext.putVar("distanceUnit", ReportUtils.getDistanceUnit(userId));
-            jxlsContext.putVar("speedUnit", ReportUtils.getSpeedUnit(userId));
-            jxlsContext.putVar("timezone", from.getZone());
             JxlsHelper.getInstance().setUseFastFormulaProcessor(false)
                     .processTemplate(inputStream, outputStream, jxlsContext);
         }

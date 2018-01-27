@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2012 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,12 +38,12 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             .text("imei:")
             .number("(d+),")                     // imei
             .expression("([^,]+),")              // alarm
-            .number("(dd)/?(dd)/?(dd) ?")        // local date
-            .number("(dd):?(dd)(?:dd)?,")        // local time
+            .number("(dd)/?(dd)/?(dd) ?")        // local date (yymmdd)
+            .number("(dd):?(dd)(?:dd)?,")        // local time (hhmmss)
             .expression("([^,]+)?,")             // rfid
             .expression("[FL],")                 // full / low
             .groupBegin()
-            .number("(dd)(dd)(dd).(d+)")         // time utc (hhmmss.sss)
+            .number("(dd)(dd)(dd).d+")           // time utc (hhmmss)
             .or()
             .number("(?:d{1,5}.d+)?")
             .groupEnd()
@@ -85,15 +85,15 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             .text("imei:")
             .number("(d+),")                     // imei
             .expression("OBD,")                  // type
-            .number("(dd)(dd)(dd)")              // date
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dd)(dd)(dd)")              // date (yymmdd)
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .number("(d+),")                     // odometer
             .number("(d+.d+)?,")                 // fuel instant
             .number("(d+.d+)?,")                 // fuel average
-            .number("(d+),")                     // hours
+            .number("(d+)?,")                    // hours
             .number("(d+),")                     // speed
-            .number("d+.?d*%,")                  // power load
-            .number("(d+),")                     // temperature
+            .number("(d+.?d*%),")                // power load
+            .number("(?:([-+]?d+)|[-+]?),")      // temperature
             .number("(d+.?d*%),")                // throttle
             .number("(d+),")                     // rpm
             .number("(d+.d+),")                  // battery
@@ -102,6 +102,11 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             .compile();
 
     private String decodeAlarm(String value) {
+        if (value.startsWith("T:")) {
+            return Position.ALARM_TEMPERATURE;
+        } else if (value.startsWith("oil")) {
+            return Position.ALARM_OIL_LEAK;
+        }
         switch (value) {
             case "tracker":
                 return null;
@@ -123,6 +128,16 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
                 return Position.ALARM_DOOR;
             case "ac alarm":
                 return Position.ALARM_POWER_CUT;
+            case "accident alarm":
+                return Position.ALARM_ACCIDENT;
+            case "sensor alarm":
+                return Position.ALARM_SHOCK;
+            case "bonnet alarm":
+                return Position.ALARM_BONNET;
+            case "footbrake alarm":
+                return Position.ALARM_FOOT_BRAKE;
+            case "DTC":
+                return Position.ALARM_FAULT;
             default:
                 return null;
         }
@@ -159,8 +174,7 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             }
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         Parser parser = new Parser(PATTERN_NETWORK, sentence);
         if (parser.matches()) {
@@ -174,7 +188,7 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             getLastLocation(position, null);
 
             position.setNetwork(new Network(
-                    CellTower.fromLacCid(parser.nextInt(16), parser.nextInt(16))));
+                    CellTower.fromLacCid(parser.nextHexInt(0), parser.nextHexInt(0))));
 
             return position;
 
@@ -189,21 +203,18 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             }
             position.setDeviceId(deviceSession.getDeviceId());
 
-            DateBuilder dateBuilder = new DateBuilder()
-                    .setDate(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                    .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
+            getLastLocation(position, parser.nextDateTime());
 
-            getLastLocation(position, dateBuilder.getDate());
-
-            position.set(Position.KEY_ODOMETER, parser.nextInt());
-            parser.next(); // instant fuel consumption
-            position.set(Position.KEY_FUEL_CONSUMPTION, parser.next());
-            position.set(Position.KEY_HOURS, parser.next());
-            position.set(Position.KEY_OBD_SPEED, parser.next());
-            position.set(Position.PREFIX_TEMP + 1, parser.next());
+            position.set(Position.KEY_ODOMETER, parser.nextInt(0));
+            parser.nextDouble(0); // instant fuel consumption
+            position.set(Position.KEY_FUEL_CONSUMPTION, parser.nextDouble(0));
+            position.set(Position.KEY_HOURS, parser.nextInt());
+            position.set(Position.KEY_OBD_SPEED, parser.nextInt(0));
+            position.set(Position.KEY_ENGINE_LOAD, parser.next());
+            position.set(Position.KEY_COOLANT_TEMP, parser.nextInt());
             position.set(Position.KEY_THROTTLE, parser.next());
-            position.set(Position.KEY_RPM, parser.next());
-            position.set(Position.KEY_BATTERY, parser.next());
+            position.set(Position.KEY_RPM, parser.nextInt(0));
+            position.set(Position.KEY_BATTERY, parser.nextDouble(0));
             position.set(Position.KEY_DTCS, parser.next().replace(',', ' ').trim());
 
             return position;
@@ -232,23 +243,29 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
             position.set(Position.KEY_IGNITION, true);
         } else if (alarm.equals("acc off")) {
             position.set(Position.KEY_IGNITION, false);
+        } else if (alarm.startsWith("T:")) {
+            position.set(Position.PREFIX_TEMP + 1, alarm.substring(2));
+        } else if (alarm.startsWith("oil ")) {
+            position.set("oil", alarm.substring(4));
+        } else if (!position.getAttributes().containsKey(Position.KEY_ALARM) && !alarm.equals("tracker")) {
+            position.set(Position.KEY_EVENT, alarm);
         }
 
         DateBuilder dateBuilder = new DateBuilder()
-                .setDate(parser.nextInt(), parser.nextInt(), parser.nextInt());
+                .setDate(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
-        int localHours = parser.nextInt();
-        int localMinutes = parser.nextInt();
+        int localHours = parser.nextInt(0);
+        int localMinutes = parser.nextInt(0);
 
         String rfid = parser.next();
         if (alarm.equals("rfid")) {
-            position.set(Position.KEY_RFID, rfid);
+            position.set(Position.KEY_DRIVER_UNIQUE_ID, rfid);
         }
 
         String utcHours = parser.next();
         String utcMinutes = parser.next();
 
-        dateBuilder.setTime(localHours, localMinutes, parser.nextInt(), parser.nextInt());
+        dateBuilder.setTime(localHours, localMinutes, parser.nextInt(0));
 
         // Timezone calculation
         if (utcHours != null && utcMinutes != null) {
@@ -266,9 +283,9 @@ public class Gps103ProtocolDecoder extends BaseProtocolDecoder {
         position.setValid(parser.next().equals("A"));
         position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.HEM_DEG_MIN_HEM));
         position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.HEM_DEG_MIN_HEM));
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
-        position.setAltitude(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
+        position.setAltitude(parser.nextDouble(0));
 
         for (int i = 1; i <= 5; i++) {
             position.set(Position.PREFIX_IO + i, parser.next());

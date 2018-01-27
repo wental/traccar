@@ -17,6 +17,7 @@ package org.traccar.api.resource;
 
 import org.traccar.Context;
 import org.traccar.api.BaseResource;
+import org.traccar.helper.LogAction;
 import org.traccar.model.User;
 
 import javax.annotation.security.PermitAll;
@@ -33,6 +34,11 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.WebApplicationException;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.xml.bind.DatatypeConverter;
+
+import java.io.UnsupportedEncodingException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 
 @Path("session")
@@ -49,18 +55,21 @@ public class SessionResource extends BaseResource {
 
     @PermitAll
     @GET
-    public User get(@QueryParam("token") String token) throws SQLException {
+    public User get(@QueryParam("token") String token) throws SQLException, UnsupportedEncodingException {
         Long userId = (Long) request.getSession().getAttribute(USER_ID_KEY);
         if (userId == null) {
             Cookie[] cookies = request.getCookies();
             String email = null, password = null;
             if (cookies != null) {
-                for (int i = 0; i < cookies.length; i++) {
-                    if (cookies[i].getName().equals(USER_COOKIE_KEY)) {
-                        email = cookies[i].getValue();
-                    }
-                    if (cookies[i].getName().equals(PASS_COOKIE_KEY)) {
-                        password = cookies[i].getValue();
+                for (Cookie cookie : cookies) {
+                    if (cookie.getName().equals(USER_COOKIE_KEY)) {
+                        byte[] emailBytes = DatatypeConverter.parseBase64Binary(
+                                URLDecoder.decode(cookie.getValue(), StandardCharsets.US_ASCII.name()));
+                        email = new String(emailBytes, StandardCharsets.UTF_8);
+                    } else if (cookie.getName().equals(PASS_COOKIE_KEY)) {
+                        byte[] passwordBytes = DatatypeConverter.parseBase64Binary(
+                                URLDecoder.decode(cookie.getValue(), StandardCharsets.US_ASCII.name()));
+                        password = new String(passwordBytes, StandardCharsets.UTF_8);
                     }
                 }
             }
@@ -71,7 +80,7 @@ public class SessionResource extends BaseResource {
                     request.getSession().setAttribute(USER_ID_KEY, userId);
                 }
             } else if (token != null) {
-                User user = Context.getPermissionsManager().getUserByToken(token);
+                User user = Context.getUsersManager().getUserByToken(token);
                 if (user != null) {
                     userId = user.getId();
                     request.getSession().setAttribute(USER_ID_KEY, userId);
@@ -94,6 +103,7 @@ public class SessionResource extends BaseResource {
         User user = Context.getPermissionsManager().login(email, password);
         if (user != null) {
             request.getSession().setAttribute(USER_ID_KEY, user.getId());
+            LogAction.login(user.getId());
             return user;
         } else {
             throw new WebApplicationException(Response.status(Response.Status.UNAUTHORIZED).build());
@@ -102,6 +112,7 @@ public class SessionResource extends BaseResource {
 
     @DELETE
     public Response remove() {
+        LogAction.logout(getUserId());
         request.getSession().removeAttribute(USER_ID_KEY);
         return Response.noContent().build();
     }

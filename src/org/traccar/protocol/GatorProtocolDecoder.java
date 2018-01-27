@@ -90,8 +90,7 @@ public class GatorProtocolDecoder extends BaseProtocolDecoder {
         if (type == MSG_POSITION_DATA || type == MSG_ROLLCALL_RESPONSE
                 || type == MSG_ALARM_DATA || type == MSG_BLIND_AREA) {
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
 
             DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, "1" + id, id);
             if (deviceSession == null) {
@@ -120,7 +119,7 @@ public class GatorProtocolDecoder extends BaseProtocolDecoder {
             position.set(Position.KEY_STATUS, buf.readUnsignedByte());
             position.set("key", buf.readUnsignedByte());
             position.set("oil", buf.readUnsignedShort() / 10.0);
-            position.set(Position.KEY_POWER, buf.readUnsignedByte() + buf.readUnsignedByte() / 100.0);
+            position.set(Position.KEY_POWER, buf.readUnsignedByte() + buf.readUnsignedByte() * 0.01);
             position.set(Position.KEY_ODOMETER, buf.readUnsignedInt());
 
             return position;

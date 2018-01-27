@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2015 - 2018 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,10 +15,12 @@
  */
 package org.traccar.model;
 
+import org.traccar.database.QueryIgnore;
 import org.traccar.helper.Log;
 
-public class Server extends Extensible {
+public class Server extends ExtendedModel {
 
+    @QueryIgnore
     public String getVersion() {
         return Log.getAppVersion();
     }
@@ -44,6 +46,16 @@ public class Server extends Extensible {
 
     public void setReadonly(boolean readonly) {
         this.readonly = readonly;
+    }
+
+    private boolean deviceReadonly;
+
+    public boolean getDeviceReadonly() {
+        return deviceReadonly;
+    }
+
+    public void setDeviceReadonly(boolean deviceReadonly) {
+        this.deviceReadonly = deviceReadonly;
     }
 
     private String map;
@@ -74,26 +86,6 @@ public class Server extends Extensible {
 
     public void setMapUrl(String mapUrl) {
         this.mapUrl = mapUrl;
-    }
-
-    private String distanceUnit;
-
-    public String getDistanceUnit() {
-        return distanceUnit;
-    }
-
-    public void setDistanceUnit(String distanceUnit) {
-        this.distanceUnit = distanceUnit;
-    }
-
-    private String speedUnit;
-
-    public String getSpeedUnit() {
-        return speedUnit;
-    }
-
-    public void setSpeedUnit(String speedUnit) {
-        this.speedUnit = speedUnit;
     }
 
     private double latitude;
@@ -156,4 +148,23 @@ public class Server extends Extensible {
         this.coordinateFormat = coordinateFormat;
     }
 
+    private boolean limitCommands;
+
+    public boolean getLimitCommands() {
+        return limitCommands;
+    }
+
+    public void setLimitCommands(boolean limitCommands) {
+        this.limitCommands = limitCommands;
+    }
+
+    private String poiLayer;
+
+    public String getPoiLayer() {
+        return poiLayer;
+    }
+
+    public void setPoiLayer(String poiLayer) {
+        this.poiLayer = poiLayer;
+    }
 }

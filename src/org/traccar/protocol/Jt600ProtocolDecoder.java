@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2012 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
 import org.traccar.helper.BcdUtil;
+import org.traccar.helper.BitBuffer;
+import org.traccar.helper.BitUtil;
 import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
@@ -31,6 +33,8 @@ import org.traccar.model.Position;
 
 import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.regex.Pattern;
 
 public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
@@ -45,10 +49,9 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         return degrees + minutes / 60;
     }
 
-    private Position decodeBinary(ChannelBuffer buf, Channel channel, SocketAddress remoteAddress) {
+    private List<Position> decodeBinary(ChannelBuffer buf, Channel channel, SocketAddress remoteAddress) {
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        List<Position> positions = new LinkedList<>();
 
         buf.readByte(); // header
 
@@ -59,93 +62,124 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
         if (deviceSession == null) {
             return null;
         }
-        position.setDeviceId(deviceSession.getDeviceId());
 
+        int protocolVersion = 0;
         if (longFormat) {
-            buf.readUnsignedByte(); // protocol
+            protocolVersion = buf.readUnsignedByte();
         }
 
-        int version = buf.readUnsignedByte() >> 4;
+        int version = BitUtil.from(buf.readUnsignedByte(), 4);
         buf.readUnsignedShort(); // length
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setDay(BcdUtil.readInteger(buf, 2))
-                .setMonth(BcdUtil.readInteger(buf, 2))
-                .setYear(BcdUtil.readInteger(buf, 2))
-                .setHour(BcdUtil.readInteger(buf, 2))
-                .setMinute(BcdUtil.readInteger(buf, 2))
-                .setSecond(BcdUtil.readInteger(buf, 2));
-        position.setTime(dateBuilder.getDate());
+        while (buf.readableBytes() > 1) {
 
-        double latitude = convertCoordinate(BcdUtil.readInteger(buf, 8));
-        double longitude = convertCoordinate(BcdUtil.readInteger(buf, 9));
+            Position position = new Position(getProtocolName());
+            position.setDeviceId(deviceSession.getDeviceId());
 
-        byte flags = buf.readByte();
-        position.setValid((flags & 0x1) == 0x1);
-        if ((flags & 0x2) == 0) {
-            latitude = -latitude;
-        }
-        position.setLatitude(latitude);
-        if ((flags & 0x4) == 0) {
-            longitude = -longitude;
-        }
-        position.setLongitude(longitude);
+            DateBuilder dateBuilder = new DateBuilder()
+                    .setDay(BcdUtil.readInteger(buf, 2))
+                    .setMonth(BcdUtil.readInteger(buf, 2))
+                    .setYear(BcdUtil.readInteger(buf, 2))
+                    .setHour(BcdUtil.readInteger(buf, 2))
+                    .setMinute(BcdUtil.readInteger(buf, 2))
+                    .setSecond(BcdUtil.readInteger(buf, 2));
+            position.setTime(dateBuilder.getDate());
 
-        position.setSpeed(BcdUtil.readInteger(buf, 2));
-        position.setCourse(buf.readUnsignedByte() * 2.0);
+            double latitude = convertCoordinate(BcdUtil.readInteger(buf, 8));
+            double longitude = convertCoordinate(BcdUtil.readInteger(buf, 9));
 
-        if (longFormat) {
+            byte flags = buf.readByte();
+            position.setValid((flags & 0x1) == 0x1);
+            if ((flags & 0x2) == 0) {
+                latitude = -latitude;
+            }
+            position.setLatitude(latitude);
+            if ((flags & 0x4) == 0) {
+                longitude = -longitude;
+            }
+            position.setLongitude(longitude);
 
-            position.set(Position.KEY_ODOMETER, buf.readUnsignedInt() * 1000);
-            position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
+            position.setSpeed(BcdUtil.readInteger(buf, 2));
+            position.setCourse(buf.readUnsignedByte() * 2.0);
 
-            buf.readUnsignedInt(); // vehicle id combined
+            if (longFormat) {
 
-            position.set(Position.KEY_STATUS, buf.readUnsignedShort());
+                position.set(Position.KEY_ODOMETER, buf.readUnsignedInt() * 1000);
+                position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
 
-            int battery = buf.readUnsignedByte();
-            if (battery == 0xff) {
-                position.set(Position.KEY_CHARGE, true);
-            } else {
-                position.set(Position.KEY_BATTERY, battery + "%");
+                buf.readUnsignedInt(); // vehicle id combined
+
+                position.set(Position.KEY_STATUS, buf.readUnsignedShort());
+
+                int battery = buf.readUnsignedByte();
+                if (battery == 0xff) {
+                    position.set(Position.KEY_CHARGE, true);
+                } else {
+                    position.set(Position.KEY_BATTERY_LEVEL, battery);
+                }
+
+                CellTower cellTower = CellTower.fromCidLac(buf.readUnsignedShort(), buf.readUnsignedShort());
+                cellTower.setSignalStrength((int) buf.readUnsignedByte());
+                position.setNetwork(new Network(cellTower));
+
+                if (protocolVersion == 0x17) {
+                    buf.readUnsignedByte(); // geofence id
+                    buf.skipBytes(3); // reserved
+                }
+
+            } else if (version == 1) {
+
+                position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
+                position.set(Position.KEY_POWER, buf.readUnsignedByte());
+
+                buf.readByte(); // other flags and sensors
+
+                position.setAltitude(buf.readUnsignedShort());
+
+                int cid = buf.readUnsignedShort();
+                int lac = buf.readUnsignedShort();
+                int rssi = buf.readUnsignedByte();
+
+                if (cid != 0 && lac != 0) {
+                    CellTower cellTower = CellTower.fromCidLac(cid, lac);
+                    cellTower.setSignalStrength(rssi);
+                    position.setNetwork(new Network(cellTower));
+                } else {
+                    position.set(Position.KEY_RSSI, rssi);
+                }
+
+            } else if (version == 2) {
+
+                int fuel = buf.readUnsignedByte() << 8;
+
+                position.set(Position.KEY_STATUS, buf.readUnsignedInt());
+                position.set(Position.KEY_ODOMETER, buf.readUnsignedInt() * 1000);
+
+                fuel += buf.readUnsignedByte();
+                position.set(Position.KEY_FUEL_LEVEL, fuel);
+
+            } else if (version == 3) {
+
+                BitBuffer bitBuffer = new BitBuffer(buf);
+
+                position.set("fuel1", bitBuffer.readUnsigned(12));
+                position.set("fuel2", bitBuffer.readUnsigned(12));
+                position.set("fuel3", bitBuffer.readUnsigned(12));
+                position.set(Position.KEY_ODOMETER, bitBuffer.readUnsigned(20) * 1000);
+
+                int status = bitBuffer.readUnsigned(24);
+                position.set(Position.KEY_IGNITION, BitUtil.check(status, 0));
+                position.set(Position.KEY_STATUS, status);
+
             }
 
-            position.setNetwork(new Network(
-                    CellTower.fromCidLac(buf.readUnsignedShort(), buf.readUnsignedShort())));
-
-            position.set(Position.KEY_RSSI, buf.readUnsignedByte());
-            position.set(Position.KEY_INDEX, buf.readUnsignedByte());
-
-        } else if (version == 1) {
-
-            position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
-            position.set(Position.KEY_POWER, buf.readUnsignedByte());
-
-            buf.readByte(); // other flags and sensors
-
-            position.setAltitude(buf.readUnsignedShort());
-
-            int cid = buf.readUnsignedShort();
-            int lac = buf.readUnsignedShort();
-            if (cid != 0 && lac != 0) {
-                position.setNetwork(new Network(CellTower.fromCidLac(cid, lac)));
-            }
-
-            position.set(Position.KEY_RSSI, buf.readUnsignedByte());
-
-        } else if (version == 2) {
-
-            int fuel = buf.readUnsignedByte() << 8;
-
-            position.set(Position.KEY_STATUS, buf.readUnsignedInt());
-            position.set(Position.KEY_ODOMETER, buf.readUnsignedInt() * 1000);
-
-            fuel += buf.readUnsignedByte();
-            position.set(Position.KEY_FUEL, fuel);
+            positions.add(position);
 
         }
 
-        return position;
+        buf.readUnsignedByte(); // index
+
+        return positions;
     }
 
     private static final Pattern PATTERN_W01 = new PatternBuilder()
@@ -158,7 +192,7 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
             .expression("([NS]),")
             .expression("([AV]),")               // validity
             .number("(dd)(dd)(dd),")             // date (ddmmyy)
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .number("(d+),")                     // speed
             .number("(d+),")                     // course
             .number("(d+),")                     // power
@@ -180,23 +214,22 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
         position.setLongitude(parser.nextCoordinate());
         position.setLatitude(parser.nextCoordinate());
         position.setValid(parser.next().equals("A"));
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setTime(dateBuilder.getDate());
+        position.setTime(parser.nextDateTime(Parser.DateTimeFormat.DMY_HMS));
 
-        position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble()));
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble(0)));
+        position.setCourse(parser.nextDouble(0));
 
-        position.set(Position.KEY_POWER, parser.nextDouble());
+        position.set(Position.KEY_POWER, parser.nextDouble(0));
+        position.set(Position.KEY_GPS, parser.nextInt(0));
+        position.set(Position.KEY_RSSI, parser.nextInt(0));
+        position.set("alertType", parser.nextInt(0));
 
         return position;
     }
@@ -207,14 +240,14 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
             .number("(Udd),")                    // type
             .number("d+,").optional()            // alarm
             .number("(dd)(dd)(dd),")             // date (ddmmyy)
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .expression("([TF]),")               // validity
             .number("(d+.d+),([NS]),")           // latitude
             .number("(d+.d+),([EW]),")           // longitude
             .number("(d+.?d*),")                 // speed
             .number("(d+),")                     // course
             .number("(d+),")                     // satellites
-            .number("(d+%),")                    // battery
+            .number("(d+)%,")                    // battery
             .expression("([01]+),")              // status
             .number("(d+),")                     // cid
             .number("(d+),")                     // lac
@@ -239,31 +272,28 @@ public class Jt600ProtocolDecoder extends BaseProtocolDecoder {
 
         String type = parser.next();
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setTime(dateBuilder.getDate());
+        position.setTime(parser.nextDateTime(Parser.DateTimeFormat.DMY_HMS));
 
         position.setValid(parser.next().equals("T"));
         position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
         position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
 
-        position.setSpeed(UnitsConverter.knotsFromMph(parser.nextDouble()));
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(UnitsConverter.knotsFromMph(parser.nextDouble(0)));
+        position.setCourse(parser.nextDouble(0));
 
-        position.set(Position.KEY_SATELLITES, parser.nextInt());
-        position.set(Position.KEY_BATTERY, parser.next());
-        position.set(Position.KEY_STATUS, parser.nextInt(2));
+        position.set(Position.KEY_SATELLITES, parser.nextInt(0));
+        position.set(Position.KEY_BATTERY_LEVEL, parser.nextInt(0));
+        position.set(Position.KEY_STATUS, parser.nextBinInt(0));
 
-        position.setNetwork(new Network(CellTower.fromCidLac(parser.nextInt(), parser.nextInt())));
+        CellTower cellTower = CellTower.fromCidLac(parser.nextInt(0), parser.nextInt(0));
+        cellTower.setSignalStrength(parser.nextInt(0));
+        position.setNetwork(new Network(cellTower));
 
-        position.set(Position.KEY_RSSI, parser.nextInt());
-        position.set(Position.KEY_ODOMETER, parser.nextLong() * 1000);
-        position.set(Position.KEY_INDEX, parser.nextInt());
+        position.set(Position.KEY_ODOMETER, parser.nextLong(0) * 1000);
+        position.set(Position.KEY_INDEX, parser.nextInt(0));
 
         if (channel != null) {
             if (type.equals("U01") || type.equals("U02") || type.equals("U03")) {

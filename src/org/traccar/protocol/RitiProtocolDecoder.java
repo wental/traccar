@@ -36,7 +36,7 @@ public class RitiProtocolDecoder extends BaseProtocolDecoder {
 
     private static final Pattern PATTERN = new PatternBuilder()
             .text("$GPRMC,")
-            .number("(dd)(dd)(dd).?d*,")         // time
+            .number("(dd)(dd)(dd).?d*,")         // time (hhmmss)
             .expression("([AV]),")               // validity
             .number("(dd)(dd.d+),")              // latitude
             .expression("([NS]),")
@@ -56,8 +56,7 @@ public class RitiProtocolDecoder extends BaseProtocolDecoder {
 
         buf.skipBytes(2); // header
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, String.valueOf(buf.readUnsignedShort()));
         if (deviceSession == null) {
@@ -66,15 +65,15 @@ public class RitiProtocolDecoder extends BaseProtocolDecoder {
         position.setDeviceId(deviceSession.getDeviceId());
 
         position.set("mode", buf.readUnsignedByte());
-        position.set("command", buf.readUnsignedByte());
-        position.set(Position.KEY_POWER, buf.readUnsignedShort());
+        position.set(Position.KEY_COMMAND, buf.readUnsignedByte());
+        position.set(Position.KEY_POWER, buf.readUnsignedShort() * 0.001);
 
-        buf.skipBytes(5);
-        buf.readUnsignedShort();
-        buf.readUnsignedShort();
+        buf.skipBytes(5);  // status
+        buf.readUnsignedShort();  // idleCount
+        buf.readUnsignedShort();  // idleTime in seconds
 
         position.set(Position.KEY_DISTANCE, buf.readUnsignedInt());
-        position.set(Position.KEY_TRIP_ODOMETER, buf.readUnsignedInt());
+        position.set(Position.KEY_ODOMETER_TRIP, buf.readUnsignedInt());
 
         // Parse GPRMC
         int end = buf.indexOf(buf.readerIndex(), buf.writerIndex(), (byte) '*');
@@ -85,15 +84,15 @@ public class RitiProtocolDecoder extends BaseProtocolDecoder {
         }
 
         DateBuilder dateBuilder = new DateBuilder()
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
+                .setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
         position.setValid(parser.next().equals("A"));
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
 
-        dateBuilder.setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
+        dateBuilder.setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
         position.setTime(dateBuilder.getDate());
 
         return position;

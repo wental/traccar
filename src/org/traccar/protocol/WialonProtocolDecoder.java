@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 - 2014 Anton Tananaev (anton@traccar.org)
+ * Copyright 2013 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.traccar.protocol;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.helper.UnitsConverter;
@@ -39,7 +38,7 @@ public class WialonProtocolDecoder extends BaseProtocolDecoder {
 
     private static final Pattern PATTERN = new PatternBuilder()
             .number("(dd)(dd)(dd);")             // date (ddmmyy)
-            .number("(dd)(dd)(dd);")             // time
+            .number("(dd)(dd)(dd);")             // time (hhmmss)
             .number("(dd)(dd.d+);")              // latitude
             .expression("([NS]);")
             .number("(ddd)(dd.d+);")             // longitude
@@ -81,28 +80,24 @@ public class WialonProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setTime(dateBuilder.getDate());
+        position.setTime(parser.nextDateTime(Parser.DateTimeFormat.DMY_HMS));
 
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
-        position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble()));
-        position.setCourse(parser.nextDouble());
-        position.setAltitude(parser.nextDouble());
+        position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble(0)));
+        position.setCourse(parser.nextDouble(0));
+        position.setAltitude(parser.nextDouble(0));
 
         if (parser.hasNext()) {
-            int satellites = parser.nextInt();
+            int satellites = parser.nextInt(0);
             position.setValid(satellites >= 3);
             position.set(Position.KEY_SATELLITES, satellites);
         }
 
-        position.set(Position.KEY_HDOP, parser.next());
+        position.set(Position.KEY_HDOP, parser.nextDouble());
         position.set(Position.KEY_INPUT, parser.next());
         position.set(Position.KEY_OUTPUT, parser.next());
 
@@ -113,14 +108,18 @@ public class WialonProtocolDecoder extends BaseProtocolDecoder {
             }
         }
 
-        position.set(Position.KEY_RFID, parser.next());
+        position.set(Position.KEY_DRIVER_UNIQUE_ID, parser.next());
 
         if (parser.hasNext()) {
             String[] values = parser.next().split(",");
             for (String param : values) {
                 Matcher paramParser = Pattern.compile("(.*):[1-3]:(.*)").matcher(param);
                 if (paramParser.matches()) {
-                    position.set(paramParser.group(1).toLowerCase(), paramParser.group(2));
+                    try {
+                        position.set(paramParser.group(1).toLowerCase(), Double.parseDouble(paramParser.group(2)));
+                    } catch (NumberFormatException e) {
+                        position.set(paramParser.group(1).toLowerCase(), paramParser.group(2));
+                    }
                 }
             }
         }
@@ -136,7 +135,9 @@ public class WialonProtocolDecoder extends BaseProtocolDecoder {
 
         if (sentence.startsWith("#L#")) {
 
-            String imei = sentence.substring(3, sentence.indexOf(';'));
+            String[] values = sentence.substring(3).split(";");
+
+            String imei = values[0].indexOf('.') >= 0 ? values[1] : values[0];
             DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, imei);
             if (deviceSession != null) {
                 sendResponse(channel, "#AL#", 1);
@@ -164,6 +165,7 @@ public class WialonProtocolDecoder extends BaseProtocolDecoder {
             for (String message : messages) {
                 Position position = decodePosition(channel, remoteAddress, message);
                 if (position != null) {
+                    position.set(Position.KEY_ARCHIVE, true);
                     positions.add(position);
                 }
             }
@@ -176,8 +178,7 @@ public class WialonProtocolDecoder extends BaseProtocolDecoder {
         } else if (sentence.startsWith("#M#")) {
             DeviceSession deviceSession = getDeviceSession(channel, remoteAddress);
             if (deviceSession != null) {
-                Position position = new Position();
-                position.setProtocol(getProtocolName());
+                Position position = new Position(getProtocolName());
                 position.setDeviceId(deviceSession.getDeviceId());
                 getLastLocation(position, new Date());
                 position.setValid(false);

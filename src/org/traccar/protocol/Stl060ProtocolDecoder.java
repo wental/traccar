@@ -18,7 +18,6 @@ package org.traccar.protocol;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.model.Position;
@@ -38,8 +37,8 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
             .number("(d+),")                     // imei
             .text("D001,")                       // type
             .expression("[^,]*,")                // vehicle
-            .number("(dd)/(dd)/(dd),")           // date
-            .number("(dd):(dd):(dd),")           // time
+            .number("(dd)/(dd)/(dd),")           // date (dd/mm/yy)
+            .number("(dd):(dd):(dd),")           // time (hh:mm:ss)
             .number("(dd)(dd).?(d+)([NS]),")     // latitude
             .number("(ddd)(dd).?(d+)([EW]),")    // longitude
             .number("(d+.?d*),")                 // speed
@@ -76,8 +75,7 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
@@ -85,35 +83,32 @@ public class Stl060ProtocolDecoder extends BaseProtocolDecoder {
         }
         position.setDeviceId(deviceSession.getDeviceId());
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setTime(dateBuilder.getDate());
+        position.setTime(parser.nextDateTime(Parser.DateTimeFormat.DMY_HMS));
 
         position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_MIN_MIN_HEM));
         position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_MIN_MIN_HEM));
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
 
         // Old format
         if (parser.hasNext(5)) {
-            position.set(Position.KEY_ODOMETER, parser.nextInt());
-            position.set(Position.KEY_IGNITION, parser.nextInt() == 1);
-            position.set(Position.KEY_INPUT, parser.nextInt() + parser.nextInt() << 1);
-            position.set(Position.KEY_FUEL, parser.nextInt());
+            position.set(Position.KEY_ODOMETER, parser.nextInt(0));
+            position.set(Position.KEY_IGNITION, parser.nextInt(0) == 1);
+            position.set(Position.KEY_INPUT, parser.nextInt(0) + parser.nextInt(0) << 1);
+            position.set(Position.KEY_FUEL_LEVEL, parser.nextInt(0));
         }
 
         // New format
         if (parser.hasNext(10)) {
-            position.set(Position.KEY_CHARGE, parser.nextInt() == 1);
-            position.set(Position.KEY_IGNITION, parser.nextInt() == 1);
-            position.set(Position.KEY_INPUT, parser.nextInt());
-            position.set(Position.KEY_RFID, parser.next());
-            position.set(Position.KEY_ODOMETER, parser.nextInt());
-            position.set(Position.PREFIX_TEMP + 1, parser.nextInt());
-            position.set(Position.KEY_FUEL, parser.nextInt());
-            position.set("accel", parser.nextInt() == 1);
-            position.set(Position.KEY_OUTPUT, parser.nextInt() + parser.nextInt() << 1);
+            position.set(Position.KEY_CHARGE, parser.nextInt(0) == 1);
+            position.set(Position.KEY_IGNITION, parser.nextInt(0) == 1);
+            position.set(Position.KEY_INPUT, parser.nextInt(0));
+            position.set(Position.KEY_DRIVER_UNIQUE_ID, parser.next());
+            position.set(Position.KEY_ODOMETER, parser.nextInt(0));
+            position.set(Position.PREFIX_TEMP + 1, parser.nextInt(0));
+            position.set(Position.KEY_FUEL_LEVEL, parser.nextInt(0));
+            position.set(Position.KEY_ACCELERATION, parser.nextInt(0) == 1);
+            position.set(Position.KEY_OUTPUT, parser.nextInt(0) + parser.nextInt(0) << 1);
         }
 
         position.setValid(parser.next().equals("A"));

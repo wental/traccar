@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2015 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,10 @@ import java.util.Set;
 public abstract class BaseProtocol implements Protocol {
 
     private final String name;
-    private final Set<String> supportedCommands = new HashSet<>();
+    private final Set<String> supportedDataCommands = new HashSet<>();
+    private final Set<String> supportedTextCommands = new HashSet<>();
+
+    private StringProtocolEncoder textCommandEncoder = null;
 
     public BaseProtocol(String name) {
         this.name = name;
@@ -40,20 +43,36 @@ public abstract class BaseProtocol implements Protocol {
         return name;
     }
 
+    public void setSupportedDataCommands(String... commands) {
+        supportedDataCommands.addAll(Arrays.asList(commands));
+    }
+
+    public void setSupportedTextCommands(String... commands) {
+        supportedTextCommands.addAll(Arrays.asList(commands));
+    }
+
     public void setSupportedCommands(String... commands) {
-        supportedCommands.addAll(Arrays.asList(commands));
+        supportedDataCommands.addAll(Arrays.asList(commands));
+        supportedTextCommands.addAll(Arrays.asList(commands));
     }
 
     @Override
-    public Collection<String> getSupportedCommands() {
-        Set<String> commands = new HashSet<>(supportedCommands);
+    public Collection<String> getSupportedDataCommands() {
+        Set<String> commands = new HashSet<>(supportedDataCommands);
         commands.add(Command.TYPE_CUSTOM);
         return commands;
     }
 
     @Override
-    public void sendCommand(ActiveDevice activeDevice, Command command) {
-        if (supportedCommands.contains(command.getType())) {
+    public Collection<String> getSupportedTextCommands() {
+        Set<String> commands = new HashSet<>(supportedTextCommands);
+        commands.add(Command.TYPE_CUSTOM);
+        return commands;
+    }
+
+    @Override
+    public void sendDataCommand(ActiveDevice activeDevice, Command command) {
+        if (supportedDataCommands.contains(command.getType())) {
             activeDevice.write(command);
         } else if (command.getType().equals(Command.TYPE_CUSTOM)) {
             String data = command.getString(Command.KEY_DATA);
@@ -64,6 +83,27 @@ public abstract class BaseProtocol implements Protocol {
             }
         } else {
             throw new RuntimeException("Command " + command.getType() + " is not supported in protocol " + getName());
+        }
+    }
+
+    public void setTextCommandEncoder(StringProtocolEncoder textCommandEncoder) {
+        this.textCommandEncoder = textCommandEncoder;
+    }
+
+    @Override
+    public void sendTextCommand(String destAddress, Command command) throws Exception {
+        if (Context.getSmppManager() != null) {
+            if (command.getType().equals(Command.TYPE_CUSTOM)) {
+                Context.getSmppManager().sendMessageSync(destAddress, command.getString(Command.KEY_DATA), true);
+            } else if (supportedTextCommands.contains(command.getType()) && textCommandEncoder != null) {
+                Context.getSmppManager().sendMessageSync(destAddress,
+                        (String) textCommandEncoder.encodeCommand(command), true);
+            } else {
+                throw new RuntimeException(
+                        "Command " + command.getType() + " is not supported in protocol " + getName());
+            }
+        } else {
+            throw new RuntimeException("SMPP client is not enabled");
         }
     }
 

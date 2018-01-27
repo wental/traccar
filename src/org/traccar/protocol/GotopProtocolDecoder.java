@@ -18,7 +18,6 @@ package org.traccar.protocol;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.helper.UnitsConverter;
@@ -38,7 +37,7 @@ public class GotopProtocolDecoder extends BaseProtocolDecoder {
             .expression("[^,]+,")                // type
             .expression("([AV]),")               // validity
             .number("DATE:(dd)(dd)(dd),")        // date (yyddmm)
-            .number("TIME:(dd)(dd)(dd),")        // time
+            .number("TIME:(dd)(dd)(dd),")        // time (hhmmss)
             .number("LAT:(d+.d+)([NS]),")        // latitude
             .number("LOT:(d+.d+)([EW]),")        // longitude
             .text("Speed:").number("(d+.d+),")   // speed
@@ -56,8 +55,7 @@ public class GotopProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
@@ -67,18 +65,15 @@ public class GotopProtocolDecoder extends BaseProtocolDecoder {
 
         position.setValid(parser.next().equals("A"));
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setDate(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setTime(dateBuilder.getDate());
+        position.setTime(parser.nextDateTime());
 
         position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
         position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
-        position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble()));
+        position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble(0)));
 
         position.set(Position.KEY_STATUS, parser.next());
 
-        position.setCourse(parser.nextDouble());
+        position.setCourse(parser.nextDouble(0));
 
         return position;
     }

@@ -89,7 +89,7 @@ public class GranitProtocolDecoder extends BaseProtocolDecoder {
         position.set(Position.KEY_SATELLITES, BitUtil.from(satDel, 4));
 
         int pdop = BitUtil.to(satDel, 4);
-        position.set("pdop", pdop);
+        position.set(Position.KEY_PDOP, pdop);
 
         int lonDegrees = buf.readUnsignedByte();
         int latDegrees = buf.readUnsignedByte();
@@ -158,8 +158,7 @@ public class GranitProtocolDecoder extends BaseProtocolDecoder {
 
         if (deviceSession != null && indexTilde == -1) {
             String bufString = buf.toString(StandardCharsets.US_ASCII);
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
 
             position.setTime(new Date());
@@ -186,8 +185,7 @@ public class GranitProtocolDecoder extends BaseProtocolDecoder {
             if (channel != null) {
                 sendResponseCurrent(channel, deviceId, unixTime);
             }
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
 
             position.setTime(new Date(unixTime * 1000));
@@ -219,11 +217,11 @@ public class GranitProtocolDecoder extends BaseProtocolDecoder {
                 int timeIncrement = buf.getUnsignedShort(buf.readerIndex() + 120);
                 for (int i = 0; i < 6; i++) {
                     if (buf.getUnsignedByte(buf.readerIndex()) != 0xFE) {
-                        Position position = new Position();
-                        position.setProtocol(getProtocolName());
+                        Position position = new Position(getProtocolName());
                         position.setDeviceId(deviceSession.getDeviceId());
                         position.setTime(new Date((unixTime + i * timeIncrement) * 1000));
                         decodeStructure(buf, position);
+                        position.set(Position.KEY_ARCHIVE, true);
                         positions.add(position);
                     } else {
                         buf.skipBytes(20); // skip filled 0xFE structure

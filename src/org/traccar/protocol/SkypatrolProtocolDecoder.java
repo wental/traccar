@@ -67,8 +67,7 @@ public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
         // Binary position report
         if (apiNumber == 5 && commandType == 2 && messageType == 1 && BitUtil.check(mask, 0)) {
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
 
             if (BitUtil.check(mask, 1)) {
                 position.set(Position.KEY_STATUS, buf.readUnsignedInt());
@@ -92,15 +91,15 @@ public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
             position.setDeviceId(deviceSession.getDeviceId());
 
             if (BitUtil.check(mask, 3)) {
-                buf.readUnsignedShort(); // io data
+                position.set(Position.PREFIX_IO + 1, buf.readUnsignedShort());
             }
 
             if (BitUtil.check(mask, 4)) {
-                buf.readUnsignedShort(); // adc 1
+                position.set(Position.PREFIX_ADC + 1, buf.readUnsignedShort());
             }
 
             if (BitUtil.check(mask, 5)) {
-                buf.readUnsignedShort(); // adc 2
+                position.set(Position.PREFIX_ADC + 2, buf.readUnsignedShort());
             }
 
             if (BitUtil.check(mask, 7)) {
@@ -150,11 +149,11 @@ public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
             }
 
             if (BitUtil.check(mask, 17)) {
-                buf.readUnsignedShort(); // battery percentage
+                position.set(Position.KEY_BATTERY, buf.readUnsignedShort());
             }
 
             if (BitUtil.check(mask, 20)) {
-                position.set("trip", buf.readUnsignedInt());
+                position.set(Position.KEY_ODOMETER_TRIP, buf.readUnsignedInt());
             }
 
             if (BitUtil.check(mask, 21)) {
@@ -166,7 +165,7 @@ public class SkypatrolProtocolDecoder extends BaseProtocolDecoder {
             }
 
             if (BitUtil.check(mask, 24)) {
-                position.set(Position.KEY_POWER, buf.readUnsignedShort() / 1000.0);
+                position.set(Position.KEY_POWER, buf.readUnsignedShort() * 0.001);
             }
 
             if (BitUtil.check(mask, 25)) {

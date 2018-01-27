@@ -80,8 +80,7 @@ public class NoranProtocolDecoder extends BaseProtocolDecoder {
                 newFormat = true;
             }
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
 
             if (type == MSG_CONTROL_RESPONSE) {
                 buf.readUnsignedInt(); // GIS ip
@@ -151,7 +150,7 @@ public class NoranProtocolDecoder extends BaseProtocolDecoder {
 
             if (!newFormat) {
                 position.set(Position.PREFIX_IO + 1, buf.readUnsignedByte());
-                position.set(Position.KEY_FUEL, buf.readUnsignedByte());
+                position.set(Position.KEY_FUEL_LEVEL, buf.readUnsignedByte());
             } else if (type == MSG_UPLOAD_POSITION_NEW) {
                 position.set(Position.PREFIX_TEMP + 1, buf.readShort());
                 position.set(Position.KEY_ODOMETER, buf.readFloat());

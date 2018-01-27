@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2012 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,13 +37,13 @@ public class XexunProtocolDecoder extends BaseProtocolDecoder {
 
     private static final Pattern PATTERN_BASIC = new PatternBuilder()
             .expression("G[PN]RMC,")
-            .number("(?:(dd)(dd)(dd))?.(d+),")   // time
+            .number("(?:(dd)(dd)(dd))?.?d*,")    // time (hhmmss)
             .expression("([AV]),")               // validity
             .number("(d*?)(d?d.d+),([NS]),")     // latitude
             .number("(d*?)(d?d.d+),([EW])?,")    // longitude
             .number("(d+.?d*),")                 // speed
             .number("(d+.?d*)?,")                // course
-            .number("(?:(dd)(dd)(dd))?,")        // date
+            .number("(?:(dd)(dd)(dd))?,")        // date (ddmmyy)
             .expression("[^*]*").text("*")
             .number("xx")                        // checksum
             .expression("\\r\\n").optional()
@@ -64,16 +64,27 @@ public class XexunProtocolDecoder extends BaseProtocolDecoder {
             .any()
             .compile();
 
-    private String decodeAlarm(String value) {
+    private String decodeStatus(Position position, String value) {
         if (value != null) {
-            switch (value) {
+            switch (value.toLowerCase()) {
+                case "acc on":
+                case "accstart":
+                    position.set(Position.KEY_IGNITION, true);
+                    break;
+                case "acc off":
+                case "accstop":
+                    position.set(Position.KEY_IGNITION, false);
+                    break;
                 case "help me!":
-                    return Position.ALARM_SOS;
+                    position.set(Position.KEY_ALARM, Position.ALARM_SOS);
+                    break;
                 case "low battery":
-                    return Position.ALARM_LOW_BATTERY;
+                    position.set(Position.KEY_ALARM, Position.ALARM_LOW_BATTERY);
+                    break;
                 case "move!":
                 case "moved!":
-                    return Position.ALARM_MOVEMENT;
+                    position.set(Position.KEY_ALARM, Position.ALARM_MOVEMENT);
+                    break;
                 default:
                     break;
             }
@@ -95,8 +106,7 @@ public class XexunProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         if (full) {
             position.set("serial", parser.next());
@@ -104,19 +114,22 @@ public class XexunProtocolDecoder extends BaseProtocolDecoder {
         }
 
         DateBuilder dateBuilder = new DateBuilder()
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt(), parser.nextInt());
+                .setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
         position.setValid(parser.next().equals("A"));
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
 
-        dateBuilder.setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
+        position.setSpeed(convertSpeed(parser.nextDouble(0), "kn"));
+
+        position.setCourse(parser.nextDouble(0));
+
+        dateBuilder.setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
         position.setTime(dateBuilder.getDate());
 
         position.set("signal", parser.next());
-        position.set(Position.KEY_ALARM, decodeAlarm(parser.next()));
+
+        decodeStatus(position, parser.next());
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
@@ -125,11 +138,11 @@ public class XexunProtocolDecoder extends BaseProtocolDecoder {
         position.setDeviceId(deviceSession.getDeviceId());
 
         if (full) {
-            position.set(Position.KEY_SATELLITES, parser.next().replaceFirst("^0*(?![\\.$])", ""));
+            position.set(Position.KEY_SATELLITES, parser.nextInt());
 
-            position.setAltitude(parser.nextDouble());
+            position.setAltitude(parser.nextDouble(0));
 
-            position.set(Position.KEY_POWER, parser.nextDouble());
+            position.set(Position.KEY_POWER, parser.nextDouble(0));
         }
 
         return position;

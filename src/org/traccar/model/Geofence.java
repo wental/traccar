@@ -18,6 +18,7 @@ package org.traccar.model;
 import java.text.ParseException;
 
 import org.traccar.Context;
+import org.traccar.database.QueryIgnore;
 import org.traccar.geofence.GeofenceCircle;
 import org.traccar.geofence.GeofenceGeometry;
 import org.traccar.geofence.GeofencePolygon;
@@ -25,7 +26,7 @@ import org.traccar.geofence.GeofencePolyline;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
-public class Geofence extends Extensible {
+public class Geofence extends ScheduledModel {
 
     public static final String TYPE_GEOFENCE_CILCLE = "geofenceCircle";
     public static final String TYPE_GEOFENCE_POLYGON = "geofencePolygon";
@@ -74,23 +75,16 @@ public class Geofence extends Extensible {
 
     private GeofenceGeometry geometry;
 
+    @QueryIgnore
     @JsonIgnore
     public GeofenceGeometry getGeometry() {
         return geometry;
     }
 
+    @QueryIgnore
+    @JsonIgnore
     public void setGeometry(GeofenceGeometry geometry) {
         area = geometry.toWkt();
         this.geometry = geometry;
-    }
-
-    private long calendarId;
-
-    public long getCalendarId() {
-        return calendarId;
-    }
-
-    public void setCalendarId(long calendarId) {
-        this.calendarId = calendarId;
     }
 }

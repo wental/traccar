@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2015 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,11 @@ import org.traccar.BaseProtocolDecoder;
 import org.traccar.Context;
 import org.traccar.DeviceSession;
 import org.traccar.helper.BitUtil;
+import org.traccar.helper.Checksum;
+import org.traccar.helper.DateBuilder;
 import org.traccar.helper.ObdDecoder;
+import org.traccar.helper.Parser;
+import org.traccar.helper.PatternBuilder;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.model.CellTower;
 import org.traccar.model.Network;
@@ -31,6 +35,7 @@ import org.traccar.model.Position;
 import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.regex.Pattern;
 
 public class UlbotechProtocolDecoder extends BaseProtocolDecoder {
 
@@ -136,27 +141,81 @@ public class UlbotechProtocolDecoder extends BaseProtocolDecoder {
         return null;
     }
 
-    @Override
-    protected Object decode(
-            Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
+    private void decodeAdc(Position position, ChannelBuffer buf, int length) {
+        for (int i = 0; i < length / 2; i++) {
+            int value = buf.readUnsignedShort();
+            int id = BitUtil.from(value, 12);
+            value = BitUtil.to(value, 12);
+            switch (id) {
+                case 0:
+                    position.set(Position.KEY_POWER, value * (100 + 10) / 4096.0 - 10);
+                    break;
+                case 1:
+                    position.set(Position.PREFIX_TEMP + 1, value * (125 + 55) / 4096.0 - 55);
+                    break;
+                case 2:
+                    position.set(Position.KEY_BATTERY, value * (100 + 10) / 4096.0 - 10);
+                    break;
+                case 3:
+                    position.set(Position.PREFIX_ADC + 1, value * (100 + 10) / 4096.0 - 10);
+                    break;
+                default:
+                    position.set(Position.PREFIX_IO + id, value);
+                    break;
+            }
+        }
+    }
 
-        ChannelBuffer buf = (ChannelBuffer) msg;
+    private static final Pattern PATTERN = new PatternBuilder()
+            .text("*TS")
+            .number("dd,")                       // protocol version
+            .number("(d{15}),")                  // device id
+            .number("(dd)(dd)(dd)")              // time
+            .number("(dd)(dd)(dd),")             // date
+            .expression("([^#]+)")               // command
+            .text("#")
+            .compile();
 
-        if (buf.readUnsignedByte() != 0xF8) {
+    private Object decodeText(Channel channel, SocketAddress remoteAddress, String sentence) {
+
+        Parser parser = new Parser(PATTERN, sentence);
+        if (!parser.matches()) {
             return null;
         }
 
+        DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
+        if (deviceSession == null) {
+            return null;
+        }
+
+        Position position = new Position(getProtocolName());
+        position.setDeviceId(deviceSession.getDeviceId());
+
+        DateBuilder dateBuilder = new DateBuilder()
+                .setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0))
+                .setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
+
+        getLastLocation(position, dateBuilder.getDate());
+
+        position.set(Position.KEY_RESULT, parser.next());
+
+        return position;
+    }
+
+    private Object decodeBinary(Channel channel, SocketAddress remoteAddress, ChannelBuffer buf) {
+
+        buf.readUnsignedByte(); // header
         buf.readUnsignedByte(); // version
         buf.readUnsignedByte(); // type
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
-
         String imei = ChannelBuffers.hexDump(buf.readBytes(8)).substring(1);
+
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, imei);
         if (deviceSession == null) {
             return null;
         }
+
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
         long seconds = buf.readUnsignedInt() & 0x7fffffffL;
@@ -210,10 +269,7 @@ public class UlbotechProtocolDecoder extends BaseProtocolDecoder {
                     break;
 
                 case DATA_ADC:
-                    for (int i = 0; i < length / 2; i++) {
-                        int value = buf.readUnsignedShort();
-                        position.set(Position.PREFIX_ADC + BitUtil.from(value, 12), BitUtil.to(value, 12));
-                    }
+                    decodeAdc(position, buf, length);
                     break;
 
                 case DATA_GEOFENCE:
@@ -226,7 +282,7 @@ public class UlbotechProtocolDecoder extends BaseProtocolDecoder {
                     break;
 
                 case DATA_FUEL:
-                    position.set("fuelConsumption", buf.readUnsignedInt() / 10000.0);
+                    position.set(Position.KEY_FUEL_CONSUMPTION, buf.readUnsignedInt() / 10000.0);
                     break;
 
                 case DATA_OBD2_ALARM:
@@ -250,7 +306,8 @@ public class UlbotechProtocolDecoder extends BaseProtocolDecoder {
                     break;
 
                 case DATA_RFID:
-                    position.set(Position.KEY_RFID, buf.readBytes(length - 1).toString(StandardCharsets.US_ASCII));
+                    position.set(Position.KEY_DRIVER_UNIQUE_ID,
+                            buf.readBytes(length - 1).toString(StandardCharsets.US_ASCII));
                     position.set("authorized", buf.readUnsignedByte() != 0);
                     break;
 
@@ -274,6 +331,38 @@ public class UlbotechProtocolDecoder extends BaseProtocolDecoder {
         }
 
         return position;
+    }
+
+    @Override
+    protected Object decode(
+            Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
+
+        ChannelBuffer buf = (ChannelBuffer) msg;
+
+        if (buf.getUnsignedByte(buf.readerIndex()) == 0xF8) {
+
+            if (channel != null) {
+                ChannelBuffer response = ChannelBuffers.dynamicBuffer();
+                response.writeByte(0xF8);
+                response.writeByte(DATA_GPS);
+                response.writeByte(0xFE);
+                response.writeShort(buf.getShort(response.writerIndex() - 1 - 2));
+                response.writeShort(Checksum.crc16(Checksum.CRC16_XMODEM, response.toByteBuffer(1, 4)));
+                response.writeByte(0xF8);
+                channel.write(response);
+            }
+
+            return decodeBinary(channel, remoteAddress, buf);
+        } else {
+
+            if (channel != null) {
+                channel.write(ChannelBuffers.copiedBuffer(String.format("*TS01,ACK:%04X#",
+                        Checksum.crc16(Checksum.CRC16_XMODEM, buf.toByteBuffer(1, buf.writerIndex() - 2))),
+                        StandardCharsets.US_ASCII));
+            }
+
+            return decodeText(channel, remoteAddress, buf.toString(StandardCharsets.US_ASCII));
+        }
     }
 
 }

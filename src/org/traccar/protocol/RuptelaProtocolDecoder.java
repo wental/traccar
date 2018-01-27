@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2013 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,9 @@ import org.traccar.DeviceSession;
 import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Position;
 
+import javax.xml.bind.DatatypeConverter;
 import java.net.SocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
@@ -35,8 +37,78 @@ public class RuptelaProtocolDecoder extends BaseProtocolDecoder {
     }
 
     public static final int MSG_RECORDS = 1;
+    public static final int MSG_DEVICE_CONFIGURATION = 2;
+    public static final int MSG_DEVICE_VERSION = 3;
+    public static final int MSG_FIRMWARE_UPDATE = 4;
+    public static final int MSG_SET_CONNECTION = 5;
+    public static final int MSG_SET_ODOMETER = 6;
+    public static final int MSG_SMS_VIA_GPRS_RESPONSE = 7;
+    public static final int MSG_SMS_VIA_GPRS = 8;
+    public static final int MSG_DTCS = 9;
+    public static final int MSG_SET_IO = 17;
     public static final int MSG_EXTENDED_RECORDS = 68;
-    public static final int MSG_SMS_VIA_GPRS = 108;
+
+    private Position decodeCommandResponse(DeviceSession deviceSession, int type, ChannelBuffer buf) {
+        Position position = new Position(getProtocolName());
+        position.setDeviceId(deviceSession.getDeviceId());
+
+        getLastLocation(position, null);
+
+        position.set(Position.KEY_TYPE, type);
+
+        switch (type) {
+            case MSG_DEVICE_CONFIGURATION:
+            case MSG_DEVICE_VERSION:
+            case MSG_FIRMWARE_UPDATE:
+            case MSG_SMS_VIA_GPRS_RESPONSE:
+                position.set(Position.KEY_RESULT,
+                        buf.toString(buf.readerIndex(), buf.readableBytes() - 2, StandardCharsets.US_ASCII).trim());
+                return position;
+            case MSG_SET_IO:
+                position.set(Position.KEY_RESULT,
+                        String.valueOf(buf.readUnsignedByte()));
+                return position;
+            default:
+                return null;
+        }
+    }
+
+    private long readValue(ChannelBuffer buf, int length, boolean signed) {
+        switch (length) {
+            case 1:
+                return signed ? buf.readByte() : buf.readUnsignedByte();
+            case 2:
+                return signed ? buf.readShort() : buf.readUnsignedShort();
+            case 4:
+                return signed ? buf.readInt() : buf.readUnsignedInt();
+            default:
+                return buf.readLong();
+        }
+    }
+
+    private void decodeParameter(Position position, int id, ChannelBuffer buf, int length) {
+        switch (id) {
+            case 2:
+            case 3:
+            case 4:
+                position.set("di" + (id - 1), readValue(buf, length, false));
+                break;
+            case 5:
+                position.set(Position.KEY_IGNITION, readValue(buf, length, false) == 1);
+                break;
+            case 74:
+                position.set(Position.PREFIX_TEMP + 3, readValue(buf, length, true) * 0.1);
+                break;
+            case 78:
+            case 79:
+            case 80:
+                position.set(Position.PREFIX_TEMP + (id - 78), readValue(buf, length, true) * 0.1);
+                break;
+            default:
+                position.set(Position.PREFIX_IO + id, readValue(buf, length, false));
+                break;
+        }
+    }
 
     @Override
     protected Object decode(
@@ -55,14 +127,14 @@ public class RuptelaProtocolDecoder extends BaseProtocolDecoder {
         int type = buf.readUnsignedByte();
 
         if (type == MSG_RECORDS || type == MSG_EXTENDED_RECORDS) {
+
             List<Position> positions = new LinkedList<>();
 
             buf.readUnsignedByte(); // records left
             int count = buf.readUnsignedByte();
 
             for (int i = 0; i < count; i++) {
-                Position position = new Position();
-                position.setProtocol(getProtocolName());
+                Position position = new Position(getProtocolName());
                 position.setDeviceId(deviceSession.getDeviceId());
 
                 position.setTime(new Date(buf.readUnsignedInt() * 1000));
@@ -87,51 +159,86 @@ public class RuptelaProtocolDecoder extends BaseProtocolDecoder {
                 position.set(Position.KEY_HDOP, buf.readUnsignedByte() / 10.0);
 
                 if (type == MSG_EXTENDED_RECORDS) {
-                    buf.readUnsignedShort(); // event
+                    position.set(Position.KEY_EVENT, buf.readUnsignedShort());
                 } else {
-                    buf.readUnsignedByte(); // event
+                    position.set(Position.KEY_EVENT, buf.readUnsignedByte());
                 }
 
                 // Read 1 byte data
                 int cnt = buf.readUnsignedByte();
                 for (int j = 0; j < cnt; j++) {
                     int id = type == MSG_EXTENDED_RECORDS ? buf.readUnsignedShort() : buf.readUnsignedByte();
-                    position.set(Position.PREFIX_IO + id, buf.readUnsignedByte());
+                    decodeParameter(position, id, buf, 1);
                 }
 
                 // Read 2 byte data
                 cnt = buf.readUnsignedByte();
                 for (int j = 0; j < cnt; j++) {
                     int id = type == MSG_EXTENDED_RECORDS ? buf.readUnsignedShort() : buf.readUnsignedByte();
-                    position.set(Position.PREFIX_IO + id, buf.readUnsignedShort());
+                    decodeParameter(position, id, buf, 2);
                 }
 
                 // Read 4 byte data
                 cnt = buf.readUnsignedByte();
                 for (int j = 0; j < cnt; j++) {
                     int id = type == MSG_EXTENDED_RECORDS ? buf.readUnsignedShort() : buf.readUnsignedByte();
-                    position.set(Position.PREFIX_IO + id, buf.readUnsignedInt());
+                    decodeParameter(position, id, buf, 4);
                 }
 
                 // Read 8 byte data
                 cnt = buf.readUnsignedByte();
                 for (int j = 0; j < cnt; j++) {
                     int id = type == MSG_EXTENDED_RECORDS ? buf.readUnsignedShort() : buf.readUnsignedByte();
-                    position.set(Position.PREFIX_IO + id, buf.readLong());
+                    decodeParameter(position, id, buf, 8);
                 }
 
                 positions.add(position);
             }
 
             if (channel != null) {
-                byte[] response = {0x00, 0x02, 0x64, 0x01, 0x13, (byte) 0xbc};
-                channel.write(ChannelBuffers.wrappedBuffer(response)); // acknowledgement
+                channel.write(ChannelBuffers.wrappedBuffer(DatatypeConverter.parseHexBinary("0002640113bc")));
             }
 
             return positions;
-        }
 
-        return null;
+        } else if (type == MSG_DTCS) {
+
+            List<Position> positions = new LinkedList<>();
+
+            int count = buf.readUnsignedByte();
+
+            for (int i = 0; i < count; i++) {
+                Position position = new Position(getProtocolName());
+                position.setDeviceId(deviceSession.getDeviceId());
+
+                buf.readUnsignedByte(); // reserved
+
+                position.setTime(new Date(buf.readUnsignedInt() * 1000));
+
+                position.setValid(true);
+                position.setLongitude(buf.readInt() / 10000000.0);
+                position.setLatitude(buf.readInt() / 10000000.0);
+
+                if (buf.readUnsignedByte() == 2) {
+                    position.set(Position.KEY_ARCHIVE, true);
+                }
+
+                position.set(Position.KEY_DTCS, buf.readBytes(5).toString(StandardCharsets.US_ASCII));
+
+                positions.add(position);
+            }
+
+            if (channel != null) {
+                channel.write(ChannelBuffers.wrappedBuffer(DatatypeConverter.parseHexBinary("00026d01c4a4")));
+            }
+
+            return positions;
+
+        } else {
+
+            return decodeCommandResponse(deviceSession, type, buf);
+
+        }
     }
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2016 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,14 +19,19 @@ import javax.json.JsonObject;
 
 public class GeocodeFarmGeocoder extends JsonGeocoder {
 
-    private static final String URL = "https://www.geocode.farm/v3/json/reverse/";
-
-    public GeocodeFarmGeocoder(int cacheSize) {
-        super(URL + "?lat=%f&lon=%f&country=us&lang=en&count=1", cacheSize);
+    private static String formatUrl(String key, String language) {
+        String url = "https://www.geocode.farm/v3/json/reverse/";
+        url += "?lat=%f&lon=%f&country=us&count=1";
+        if (key != null) {
+            url += "&key=" + key;
+        }
+        if (language != null) {
+            url += "&lang=" + language;
+        }
+        return url;
     }
-
-    public GeocodeFarmGeocoder(String key, int cacheSize) {
-        super(URL + "?lat=%f&lon=%f&country=us&lang=en&count=1&key=" + key, cacheSize);
+    public GeocodeFarmGeocoder(String key, String language, int cacheSize, AddressFormat addressFormat) {
+        super(formatUrl(key, language), cacheSize, addressFormat);
     }
 
     @Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2012 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelUpstreamHandler;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.MessageEvent;
-import org.traccar.geocoder.AddressFormat;
 import org.traccar.geocoder.Geocoder;
 import org.traccar.helper.Log;
 import org.traccar.model.Position;
@@ -29,18 +28,13 @@ public class GeocoderHandler implements ChannelUpstreamHandler {
 
     private final Geocoder geocoder;
     private final boolean processInvalidPositions;
-    private final AddressFormat addressFormat;
+    private final int geocoderReuseDistance;
 
     public GeocoderHandler(Geocoder geocoder, boolean processInvalidPositions) {
         this.geocoder = geocoder;
         this.processInvalidPositions = processInvalidPositions;
 
-        String formatString = Context.getConfig().getString("geocoder.format");
-        if (formatString != null) {
-            addressFormat = new AddressFormat(formatString);
-        } else {
-            addressFormat = new AddressFormat();
-        }
+        geocoderReuseDistance = Context.getConfig().getInteger("geocoder.reuseDistance", 0);
     }
 
     @Override
@@ -55,7 +49,19 @@ public class GeocoderHandler implements ChannelUpstreamHandler {
         if (message instanceof Position) {
             final Position position = (Position) message;
             if (processInvalidPositions || position.getValid()) {
-                geocoder.getAddress(addressFormat, position.getLatitude(), position.getLongitude(),
+                if (geocoderReuseDistance != 0) {
+                    Position lastPosition = Context.getIdentityManager().getLastPosition(position.getDeviceId());
+                    if (lastPosition != null && lastPosition.getAddress() != null
+                            && position.getDouble(Position.KEY_DISTANCE) <= geocoderReuseDistance) {
+                        position.setAddress(lastPosition.getAddress());
+                        Channels.fireMessageReceived(ctx, position, event.getRemoteAddress());
+                        return;
+                    }
+                }
+
+                Context.getStatisticsManager().registerGeocoderRequest();
+
+                geocoder.getAddress(position.getLatitude(), position.getLongitude(),
                         new Geocoder.ReverseGeocoderCallback() {
                     @Override
                     public void onSuccess(String address) {

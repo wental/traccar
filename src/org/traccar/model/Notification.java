@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2016 - 2018 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,16 +15,16 @@
  */
 package org.traccar.model;
 
-public class Notification extends Extensible {
+public class Notification extends ScheduledModel {
 
-    private long userId;
+    private boolean always;
 
-    public long getUserId() {
-        return userId;
+    public boolean getAlways() {
+        return always;
     }
 
-    public void setUserId(long userId) {
-        this.userId = userId;
+    public void setAlways(boolean always) {
+        this.always = always;
     }
 
     private String type;
@@ -55,5 +55,15 @@ public class Notification extends Extensible {
 
     public void setMail(boolean mail) {
         this.mail = mail;
+    }
+
+    private boolean sms;
+
+    public boolean getSms() {
+        return sms;
+    }
+
+    public void setSms(boolean sms) {
+        this.sms = sms;
     }
 }

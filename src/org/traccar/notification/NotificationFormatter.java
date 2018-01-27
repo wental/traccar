@@ -1,5 +1,6 @@
 /*
- * Copyright 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2016 - 2017 Anton Tananaev (anton@traccar.org)
+ * Copyright 2017 Andrey Kunitsyn (andrey@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,15 +18,20 @@ package org.traccar.notification;
 
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Paths;
+import java.util.Locale;
 
 import org.apache.velocity.Template;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.exception.ResourceNotFoundException;
+import org.apache.velocity.tools.generic.DateTool;
+import org.apache.velocity.tools.generic.NumberTool;
 import org.traccar.Context;
 import org.traccar.helper.Log;
 import org.traccar.model.Device;
 import org.traccar.model.Event;
 import org.traccar.model.Position;
+import org.traccar.model.User;
 import org.traccar.reports.ReportUtils;
 
 public final class NotificationFormatter {
@@ -33,32 +39,77 @@ public final class NotificationFormatter {
     private NotificationFormatter() {
     }
 
-    public static MailMessage formatMessage(long userId, Event event, Position position) {
-        Device device = Context.getIdentityManager().getDeviceById(event.getDeviceId());
+    public static VelocityContext prepareContext(long userId, Event event, Position position) {
+
+        User user = Context.getPermissionsManager().getUser(userId);
+        Device device = Context.getIdentityManager().getById(event.getDeviceId());
 
         VelocityContext velocityContext = new VelocityContext();
+        velocityContext.put("user", user);
         velocityContext.put("device", device);
         velocityContext.put("event", event);
         if (position != null) {
             velocityContext.put("position", position);
-            velocityContext.put("speedUnits", ReportUtils.getSpeedUnit(userId));
+            velocityContext.put("speedUnit", ReportUtils.getSpeedUnit(userId));
+            velocityContext.put("distanceUnit", ReportUtils.getDistanceUnit(userId));
+            velocityContext.put("volumeUnit", ReportUtils.getVolumeUnit(userId));
         }
         if (event.getGeofenceId() != 0) {
-            velocityContext.put("geofence", Context.getGeofenceManager().getGeofence(event.getGeofenceId()));
+            velocityContext.put("geofence", Context.getGeofenceManager().getById(event.getGeofenceId()));
+        }
+        String driverUniqueId = event.getString(Position.KEY_DRIVER_UNIQUE_ID);
+        if (driverUniqueId != null) {
+            velocityContext.put("driver", Context.getDriversManager().getDriverByUniqueId(driverUniqueId));
         }
         velocityContext.put("webUrl", Context.getVelocityEngine().getProperty("web.url"));
+        velocityContext.put("dateTool", new DateTool());
+        velocityContext.put("numberTool", new NumberTool());
+        velocityContext.put("timezone", ReportUtils.getTimezone(userId));
+        velocityContext.put("locale", Locale.getDefault());
+        return velocityContext;
+    }
 
-        Template template = null;
+    public static Template getTemplate(Event event, String path) {
+
+        String templateFilePath;
+        Template template;
+
         try {
-            template = Context.getVelocityEngine().getTemplate(event.getType() + ".vm", StandardCharsets.UTF_8.name());
+            templateFilePath = Paths.get(path, event.getType() + ".vm").toString();
+            template = Context.getVelocityEngine().getTemplate(templateFilePath, StandardCharsets.UTF_8.name());
         } catch (ResourceNotFoundException error) {
             Log.warning(error);
-            template = Context.getVelocityEngine().getTemplate("unknown.vm", StandardCharsets.UTF_8.name());
+            templateFilePath = Paths.get(path, "unknown.vm").toString();
+            template = Context.getVelocityEngine().getTemplate(templateFilePath, StandardCharsets.UTF_8.name());
         }
-
-        StringWriter writer = new StringWriter();
-        template.merge(velocityContext, writer);
-        String subject = (String) velocityContext.get("subject");
-        return new MailMessage(subject, writer.toString());
+        return template;
     }
+
+    public static MailMessage formatMailMessage(long userId, Event event, Position position) {
+        String templatePath = Context.getConfig().getString("mail.templatesPath", "mail");
+        VelocityContext velocityContext = prepareContext(userId, event, position);
+        String formattedMessage = formatMessage(velocityContext, userId, event, position, templatePath);
+
+        return new MailMessage((String) velocityContext.get("subject"), formattedMessage);
+    }
+
+    public static String formatSmsMessage(long userId, Event event, Position position) {
+        String templatePath = Context.getConfig().getString("sms.templatesPath", "sms");
+
+        return formatMessage(null, userId, event, position, templatePath);
+    }
+
+    private static String formatMessage(VelocityContext vc, Long userId, Event event, Position position,
+            String templatePath) {
+
+        VelocityContext velocityContext = vc;
+        if (velocityContext == null) {
+            velocityContext = prepareContext(userId, event, position);
+        }
+        StringWriter writer = new StringWriter();
+        getTemplate(event, templatePath).merge(velocityContext, writer);
+
+        return writer.toString();
+    }
+
 }

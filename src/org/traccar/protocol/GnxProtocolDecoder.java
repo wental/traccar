@@ -18,13 +18,11 @@ package org.traccar.protocol;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.model.Position;
 
 import java.net.SocketAddress;
-import java.util.TimeZone;
 import java.util.regex.Pattern;
 
 public class GnxProtocolDecoder extends BaseProtocolDecoder {
@@ -37,10 +35,10 @@ public class GnxProtocolDecoder extends BaseProtocolDecoder {
             .number("(d+),")                     // imei
             .number("d+,")                       // length
             .expression("([01]),")               // history
-            .number("(dd)(dd)(dd),")             // device time
-            .number("(dd)(dd)(dd),")             // device date
-            .number("(dd)(dd)(dd),")             // fix time
-            .number("(dd)(dd)(dd),")             // fix date
+            .number("(dd)(dd)(dd),")             // device time (hhmmss)
+            .number("(dd)(dd)(dd),")             // device date (ddmmyy)
+            .number("(dd)(dd)(dd),")             // fix time (hhmmss)
+            .number("(dd)(dd)(dd),")             // fix date (ddmmyy)
             .number("(d),")                      // valid
             .number("(dd.d+),")                  // latitude
             .expression("([NS]),")
@@ -82,8 +80,7 @@ public class GnxProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
@@ -91,29 +88,20 @@ public class GnxProtocolDecoder extends BaseProtocolDecoder {
         }
         position.setDeviceId(deviceSession.getDeviceId());
 
-        if (parser.nextInt() == 1) {
+        if (parser.nextInt(0) == 1) {
             position.set(Position.KEY_ARCHIVE, true);
         }
 
-        DateBuilder dateBuilder;
+        position.setDeviceTime(parser.nextDateTime(Parser.DateTimeFormat.HMS_DMY, "GMT+5:30"));
+        position.setFixTime(parser.nextDateTime(Parser.DateTimeFormat.HMS_DMY, "GMT+5:30"));
 
-        dateBuilder = new DateBuilder(TimeZone.getTimeZone("GMT+5:30"))
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setDeviceTime(dateBuilder.getDate());
-
-        dateBuilder = new DateBuilder(TimeZone.getTimeZone("GMT+5:30"))
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setFixTime(dateBuilder.getDate());
-
-        position.setValid(parser.nextInt() != 0);
+        position.setValid(parser.nextInt(0) != 0);
 
         position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
         position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
 
         if (type.equals("MIF")) {
-            position.set(Position.KEY_RFID, parser.next());
+            position.set(Position.KEY_DRIVER_UNIQUE_ID, parser.next());
         }
 
         return position;

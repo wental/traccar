@@ -10,8 +10,14 @@ public class CguardProtocolDecoderTest extends ProtocolTest {
 
         CguardProtocolDecoder decoder = new CguardProtocolDecoder(new CguardProtocol());
 
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "IDRO:354868050655283"));
+
+        verifyPosition(decoder, text(
+                "NV:170409 031456:56.808553:60.595476:0:NAN:0"));
+
+        verifyAttributes(decoder, text(
+                "BC:170409 031456:CSQ1:64:NSQ1:17:PWR1:0"));
 
         verifyPosition(decoder, text(
                 "NV:161007 122043:55.812730:37.733689:3.62:NAN:244.05:143.4"));
@@ -34,7 +40,7 @@ public class CguardProtocolDecoderTest extends ProtocolTest {
         verifyAttributes(decoder, text(
                 "BC:160711 044524:CSQ1:61:NSQ1:18:BAT1:98:PWR1:11.7:CLG1:NAN"));
 
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "VERSION:3.3"));
 
         verifyPosition(decoder, text(
@@ -55,7 +61,7 @@ public class CguardProtocolDecoderTest extends ProtocolTest {
         verifyAttributes(decoder, text(
                 "BC:160630 153543:NSQ2:0"));
 
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "PING"));
 
     }

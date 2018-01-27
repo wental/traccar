@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2016 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,15 +20,13 @@ import java.util.Date;
 public class Event extends Message {
 
     public Event(String type, long deviceId, long positionId) {
-        this.setType(type);
-        this.setDeviceId(deviceId);
-        this.setPositionId(positionId);
-        this.serverTime = new Date();
+        this(type, deviceId);
+        setPositionId(positionId);
     }
 
     public Event(String type, long deviceId) {
-        this.setType(type);
-        this.setDeviceId(deviceId);
+        setType(type);
+        setDeviceId(deviceId);
         this.serverTime = new Date();
     }
 
@@ -47,6 +45,7 @@ public class Event extends Message {
     public static final String TYPE_DEVICE_STOPPED = "deviceStopped";
 
     public static final String TYPE_DEVICE_OVERSPEED = "deviceOverspeed";
+    public static final String TYPE_DEVICE_FUEL_DROP = "deviceFuelDrop";
 
     public static final String TYPE_GEOFENCE_ENTER = "geofenceEnter";
     public static final String TYPE_GEOFENCE_EXIT = "geofenceExit";
@@ -58,22 +57,18 @@ public class Event extends Message {
 
     public static final String TYPE_MAINTENANCE = "maintenance";
 
+    public static final String TYPE_TEXT_MESSAGE = "textMessage";
+
+    public static final String TYPE_DRIVER_CHANGED = "driverChanged";
+
     private Date serverTime;
 
     public Date getServerTime() {
-        if (serverTime != null) {
-            return new Date(serverTime.getTime());
-        } else {
-            return null;
-        }
+        return serverTime;
     }
 
     public void setServerTime(Date serverTime) {
-        if (serverTime != null) {
-            this.serverTime = new Date(serverTime.getTime());
-        } else {
-            this.serverTime = null;
-        }
+        this.serverTime = serverTime;
     }
 
     private long positionId;

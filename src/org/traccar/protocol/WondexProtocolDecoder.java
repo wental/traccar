@@ -19,7 +19,6 @@ import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.helper.UnitsConverter;
@@ -37,10 +36,10 @@ public class WondexProtocolDecoder extends BaseProtocolDecoder {
     }
 
     private static final Pattern PATTERN = new PatternBuilder()
-            .number("[^d]*")                     // deader
+            .number("[^d]*")                     // header
             .number("(d+),")                     // device identifier
-            .number("(dddd)(dd)(dd)")            // date
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dddd)(dd)(dd)")            // date (yyyymmdd)
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .number("(-?d+.d+),")                // longitude
             .number("(-?d+.d+),")                // latitude
             .number("(d+),")                     // speed
@@ -70,18 +69,18 @@ public class WondexProtocolDecoder extends BaseProtocolDecoder {
 
             return null;
         } else if (buf.toString(StandardCharsets.US_ASCII).startsWith("$OK:")
-                || buf.toString(StandardCharsets.US_ASCII).startsWith("$ERR:")) {
+                || buf.toString(StandardCharsets.US_ASCII).startsWith("$ERR:")
+                || buf.toString(StandardCharsets.US_ASCII).startsWith("$MSG:")) {
 
             DeviceSession deviceSession = getDeviceSession(channel, remoteAddress);
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
             getLastLocation(position, new Date());
-            position.setValid(false);
             position.set(Position.KEY_RESULT, buf.toString(StandardCharsets.US_ASCII));
 
             return position;
+
         } else {
 
             Parser parser = new Parser(PATTERN, buf.toString(StandardCharsets.US_ASCII));
@@ -89,8 +88,7 @@ public class WondexProtocolDecoder extends BaseProtocolDecoder {
                 return null;
             }
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
 
             DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
             if (deviceSession == null) {
@@ -98,25 +96,22 @@ public class WondexProtocolDecoder extends BaseProtocolDecoder {
             }
             position.setDeviceId(deviceSession.getDeviceId());
 
-            DateBuilder dateBuilder = new DateBuilder()
-                    .setDate(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                    .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-            position.setTime(dateBuilder.getDate());
+            position.setTime(parser.nextDateTime());
 
-            position.setLongitude(parser.nextDouble());
-            position.setLatitude(parser.nextDouble());
-            position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble()));
-            position.setCourse(parser.nextDouble());
-            position.setAltitude(parser.nextDouble());
+            position.setLongitude(parser.nextDouble(0));
+            position.setLatitude(parser.nextDouble(0));
+            position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble(0)));
+            position.setCourse(parser.nextDouble(0));
+            position.setAltitude(parser.nextDouble(0));
 
-            int satellites = parser.nextInt();
-            position.setValid(satellites >= 3);
+            int satellites = parser.nextInt(0);
+            position.setValid(satellites != 0);
             position.set(Position.KEY_SATELLITES, satellites);
 
             position.set(Position.KEY_EVENT, parser.next());
-            position.set(Position.KEY_BATTERY, parser.next());
+            position.set(Position.KEY_BATTERY, parser.nextDouble());
             if (parser.hasNext()) {
-                position.set(Position.KEY_ODOMETER, parser.nextDouble() * 1000);
+                position.set(Position.KEY_ODOMETER, parser.nextDouble(0) * 1000);
             }
             position.set(Position.KEY_INPUT, parser.next());
             position.set(Position.PREFIX_ADC + 1, parser.next());
@@ -124,6 +119,7 @@ public class WondexProtocolDecoder extends BaseProtocolDecoder {
             position.set(Position.KEY_OUTPUT, parser.next());
 
             return position;
+
         }
 
     }

@@ -36,7 +36,7 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
 
     private static final Pattern PATTERN_GPRMC = new PatternBuilder()
             .text("$GPRMC,")
-            .number("(dd)(dd)(dd).d+,")          // time
+            .number("(dd)(dd)(dd).(ddd),")       // time (hhmmss.sss)
             .expression("([AV]),")               // validity
             .number("(d+)(dd.d+),([NS]),")       // latitude
             .number("(d+)(dd.d+),([EW]),")       // longitude
@@ -88,15 +88,15 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
         }
 
         DateBuilder dateBuilder = new DateBuilder()
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
+                .setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
         position.setValid(parser.next().equals("A"));
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
 
-        dateBuilder.setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
+        dateBuilder.setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
         position.setTime(dateBuilder.getDate());
 
         return true;
@@ -147,8 +147,7 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
 
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         if (!parseLocation(location, position)) {
             return null;
         }
@@ -166,11 +165,17 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
                 }
                 position.setDeviceId(deviceSession.getDeviceId());
 
-                position.set(Position.KEY_SATELLITES, parser.next());
+                String sat = parser.next();
+                if (sat.contains("/")) {
+                    position.set(Position.KEY_SATELLITES, Integer.parseInt(sat.split("/")[0]));
+                    position.set(Position.KEY_SATELLITES_VISIBLE, Integer.parseInt(sat.split("/")[1]));
+                } else {
+                    position.set(Position.KEY_SATELLITES, Integer.parseInt(sat));
+                }
 
-                position.setAltitude(parser.nextDouble());
+                position.setAltitude(parser.nextDouble(0));
 
-                position.set(Position.KEY_POWER, parser.nextDouble());
+                position.set(Position.KEY_BATTERY_LEVEL, parser.nextDouble(0));
 
                 String charger = parser.next();
                 if (charger != null) {
@@ -179,7 +184,7 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
 
                 if (parser.hasNext(4)) {
                     position.setNetwork(new Network(CellTower.from(
-                            parser.nextInt(), parser.nextInt(), parser.nextInt(16), parser.nextInt(16))));
+                            parser.nextInt(0), parser.nextInt(0), parser.nextHexInt(0), parser.nextHexInt(0))));
                 }
 
             } else {
@@ -203,10 +208,10 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
                 }
                 position.setDeviceId(deviceSession.getDeviceId());
 
-                position.setNetwork(new Network(CellTower.from(
-                        parser.nextInt(), parser.nextInt(), parser.nextInt(16), parser.nextInt(16), parser.nextInt())));
+                position.setNetwork(new Network(CellTower.from(parser.nextInt(0), parser.nextInt(0),
+                        parser.nextHexInt(0), parser.nextHexInt(0), parser.nextInt(0))));
 
-                position.set(Position.KEY_BATTERY, Double.parseDouble(parser.next()));
+                position.set(Position.KEY_BATTERY_LEVEL, parser.nextDouble());
 
                 position.set(Position.KEY_FLAGS, parser.next());
                 position.set(Position.KEY_INPUT, parser.next());
@@ -230,7 +235,7 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
             .expression("[^,]*,")                // name
             .expression("([RS]),")
             .number("(dd)(dd)(dd),")             // date (ddmmyy)
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .expression("([AV]),")               // validity
             .number("(d+)(dd.d+),([NS]),")       // latitude
             .number("(d+)(dd.d+),([EW]),")       // longitude
@@ -261,7 +266,7 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
             .or().text(" ")
             .groupEnd("?").text(",")
             .number("(d+)?,")                    // rfid
-            .number("d*,")
+            .expression("[^,]*,")
             .number("(d+)?,")                    // battery
             .expression("([^,]*);")              // alert
             .any()
@@ -274,47 +279,43 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
-
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
             return null;
         }
+
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
         if (parser.next().equals("S")) {
             position.set(Position.KEY_ARCHIVE, true);
         }
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setTime(dateBuilder.getDate());
+        position.setTime(parser.nextDateTime(Parser.DateTimeFormat.DMY_HMS));
 
         position.setValid(parser.next().equals("A"));
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
 
-        position.set(Position.KEY_SATELLITES, parser.nextInt());
-        position.set(Position.KEY_HDOP, parser.nextDouble());
+        position.set(Position.KEY_SATELLITES, parser.nextInt(0));
+        position.set(Position.KEY_HDOP, parser.nextDouble(0));
 
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
-        position.setAltitude(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
+        position.setAltitude(parser.nextDouble(0));
 
         if (parser.hasNext()) {
-            position.set(Position.KEY_ODOMETER, parser.nextDouble() * 1000);
+            position.set(Position.KEY_ODOMETER, parser.nextDouble(0) * 1000);
         }
 
         position.setNetwork(new Network(CellTower.from(
-                parser.nextInt(), parser.nextInt(), parser.nextInt(16), parser.nextInt(16), parser.nextInt())));
+                parser.nextInt(0), parser.nextInt(0), parser.nextHexInt(0), parser.nextHexInt(0), parser.nextInt(0))));
 
-        position.set(Position.KEY_INPUT, parser.nextInt(2));
-        position.set(Position.KEY_OUTPUT, parser.nextInt(2));
+        position.set(Position.KEY_INPUT, parser.nextBinInt(0));
+        position.set(Position.KEY_OUTPUT, parser.nextBinInt(0));
 
         for (int i = 1; i <= 3; i++) {
-            position.set(Position.PREFIX_ADC + i, parser.nextInt());
+            position.set(Position.PREFIX_ADC + i, parser.nextInt(0));
         }
 
         for (int i = 1; i <= 2; i++) {
@@ -324,7 +325,7 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
             }
         }
 
-        position.set(Position.KEY_RFID, parser.next());
+        position.set(Position.KEY_DRIVER_UNIQUE_ID, parser.next());
 
         String battery = parser.next();
         if (battery != null) {
@@ -337,30 +338,38 @@ public class MegastekProtocolDecoder extends BaseProtocolDecoder {
     }
 
     private String decodeAlarm(String value) {
-        switch (value) {
-            case "SOS":
-            case "Help":
-                return Position.ALARM_SOS;
-            case "Over Speed":
-            case "OverSpeed":
-                return Position.ALARM_OVERSPEED;
-            case "LowSpeed":
-                return Position.ALARM_LOW_SPEED;
-            case "Low Battery":
-            case "LowBattery":
-                return Position.ALARM_LOW_BATTERY;
-            case "VIB":
-                return Position.ALARM_VIBRATION;
-            case "Move in":
-            case "Geo in":
-            case "Geo1 in":
-            case "Geo2 in":
+        value = value.toLowerCase();
+        if (value.startsWith("geo")) {
+            if (value.endsWith("in")) {
                 return Position.ALARM_GEOFENCE_ENTER;
-            case "Move out":
-            case "Geo out":
-            case "Geo1 out":
-            case "Geo2 out":
+            } else if (value.endsWith("out")) {
                 return Position.ALARM_GEOFENCE_EXIT;
+            }
+        }
+        switch (value) {
+            case "poweron":
+                return Position.ALARM_POWER_ON;
+            case "poweroff":
+                return Position.ALARM_POWER_ON;
+            case "sos":
+            case "help":
+                return Position.ALARM_SOS;
+            case "over speed":
+            case "overspeed":
+                return Position.ALARM_OVERSPEED;
+            case "lowspeed":
+                return Position.ALARM_LOW_SPEED;
+            case "low battery":
+            case "lowbattery":
+                return Position.ALARM_LOW_BATTERY;
+            case "vib":
+                return Position.ALARM_VIBRATION;
+            case "move in":
+                return Position.ALARM_GEOFENCE_ENTER;
+            case "move out":
+                return Position.ALARM_GEOFENCE_EXIT;
+            case "error":
+                return Position.ALARM_FAULT;
             default:
                 return null;
         }

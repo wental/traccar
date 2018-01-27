@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2013 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
     private static final Pattern PATTERN = new PatternBuilder()
             .text("$AVRMC,")
             .expression("([^,]+),")              // identifier
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .expression("([AVRPavrp]),")         // validity
             .number("(dd)(dd.d+),")              // latitude
             .expression("([NS]),")
@@ -71,41 +71,42 @@ public class LaipacProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
         DateBuilder dateBuilder = new DateBuilder()
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
+                .setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
         String status = parser.next();
         position.setValid(status.toUpperCase().equals("A"));
 
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
 
-        dateBuilder.setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
+        dateBuilder.setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
         position.setTime(dateBuilder.getDate());
 
         String type = parser.next();
         String checksum = parser.next();
-        String response = null;
 
-        if (type.equals("0") && Character.isLowerCase(status.charAt(0))) {
-            response = "$EAVACK,0," + checksum;
-            response += Checksum.nmea(response);
-        } else if (type.equals("S") || type.equals("T")) {
-            response = "$AVCFG,00000000,t*21";
-        } else if (type.equals("3")) {
-            response = "$AVCFG,00000000,d*31";
-        } else if (type.equals("X") || type.equals("4")) {
-            response = "$AVCFG,00000000,x*2D";
-        }
+        if (channel != null) {
 
-        if (response != null && channel != null) {
-            channel.write(response + "\r\n");
+            if (Character.isLowerCase(status.charAt(0))) {
+                String response = "$EAVACK," + type + "," + checksum;
+                response += Checksum.nmea(response);
+                channel.write(response);
+            }
+
+            if (type.equals("S") || type.equals("T")) {
+                channel.write("$AVCFG,00000000,t*21");
+            } else if (type.equals("3")) {
+                channel.write("$AVCFG,00000000,d*31");
+            } else if (type.equals("X") || type.equals("4")) {
+                channel.write("$AVCFG,00000000,x*2D");
+            }
+
         }
 
         return position;

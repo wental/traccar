@@ -8,7 +8,31 @@ public class TaipProtocolDecoderTest extends ProtocolTest {
     @Test
     public void testDecode() throws Exception {
 
-        TaipProtocolDecoder decoder = new TaipProtocolDecoder(new TaipProtocol(), false);
+        TaipProtocolDecoder decoder = new TaipProtocolDecoder(new TaipProtocol());
+
+        verifyPosition(decoder, text(
+                ">RPV46640+4197412-0752857900015802;ID=5102;*71<"));
+
+        verifyNull(decoder, text(
+                ">RCP46640+419741-075285802;ID=5102;*6C<"));
+
+        verifyPosition(decoder, text(
+                ">REV001958003965+0307178+1016144900031532;IO=300;SV=8;BL=4159;CF=8161,C,13;AD=14145;IX=10233040;FF=0,0,0,0;VO=338578;ID=357042063052352<"));
+
+        verifyPosition(decoder, text(
+                ">REV011958000369+0307185+1016144400000032;IO=200;SV=9;BL=4158;CF=0,0,0;AD=12347;IX=10213040;FF=0,0,0,0;VO=338572;ID=357042063052352<"));
+
+        verifyPosition(decoder, text(
+                ">REV421942237017+1170957-0701880200000032;ID=356612022463055<"));
+
+        verifyPosition(decoder, text(
+                ">RGP200317010815-3852.9306-06204.88560000003000101;&01;ID=5555;#7AD7*51<"));
+
+        verifyPosition(decoder, text(
+                ">RCQ09000000000000-3460365-058381460000007F0000000000000115000FFFF1099;#0000;ID=555224;*05<"));
+
+        verifyPosition(decoder, text(
+                ">RBR00130217040848-3462200-05846708000175FF0022900003B3C13010800001118410+24061A;ID=555224;*07<"));
 
         verifyPosition(decoder, text(
                 ">REV451891352379+0307152+1016143700000012;SV=8;BL=4416;VO=8055;ID=356612026322000<"));

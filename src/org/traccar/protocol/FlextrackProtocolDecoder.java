@@ -18,7 +18,6 @@ package org.traccar.protocol;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.helper.UnitsConverter;
@@ -45,8 +44,8 @@ public class FlextrackProtocolDecoder extends BaseProtocolDecoder {
     private static final Pattern PATTERN = new PatternBuilder()
             .number("(-?d+),")                   // index
             .text("UNITSTAT,")
-            .number("(dddd)(dd)(dd),")           // date
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dddd)(dd)(dd),")           // date (yyyymmdd)
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .number("d+,")                       // node id
             .number("([NS])(d+).(d+.d+),")       // latitude
             .number("([EW])(d+).(d+.d+),")       // longitude
@@ -104,38 +103,35 @@ public class FlextrackProtocolDecoder extends BaseProtocolDecoder {
                 return null;
             }
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
 
             sendAcknowledgement(channel, parser.next());
 
-            DateBuilder dateBuilder = new DateBuilder()
-                    .setDate(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                    .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-            position.setTime(dateBuilder.getDate());
+            position.setTime(parser.nextDateTime());
 
             position.setValid(true);
             position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.HEM_DEG_MIN));
             position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.HEM_DEG_MIN));
-            position.setSpeed(UnitsConverter.knotsFromKph(parser.nextInt()));
-            position.setCourse(parser.nextInt());
+            position.setSpeed(UnitsConverter.knotsFromKph(parser.nextInt(0)));
+            position.setCourse(parser.nextInt(0));
 
-            position.set(Position.KEY_SATELLITES, parser.nextInt());
-            position.set(Position.KEY_BATTERY, parser.nextInt());
-            position.set(Position.KEY_RSSI, parser.nextInt());
-            position.set(Position.KEY_STATUS, parser.nextInt(16));
+            position.set(Position.KEY_SATELLITES, parser.nextInt(0));
+            position.set(Position.KEY_BATTERY, parser.nextInt(0));
+            int rssi = parser.nextInt(0);
+            position.set(Position.KEY_STATUS, parser.nextHexInt(0));
 
-            int mcc = parser.nextInt();
-            int mnc = parser.nextInt();
+            int mcc = parser.nextInt(0);
+            int mnc = parser.nextInt(0);
 
-            position.setAltitude(parser.nextInt());
+            position.setAltitude(parser.nextInt(0));
 
-            position.set(Position.KEY_HDOP, parser.nextInt() * 0.1);
+            position.set(Position.KEY_HDOP, parser.nextInt(0) * 0.1);
 
-            position.setNetwork(new Network(CellTower.from(mcc, mnc, parser.nextInt(16), parser.nextInt(16))));
+            position.setNetwork(new Network(CellTower.from(
+                    mcc, mnc, parser.nextHexInt(0), parser.nextHexInt(0), rssi)));
 
-            position.set(Position.KEY_ODOMETER, parser.nextInt());
+            position.set(Position.KEY_ODOMETER, parser.nextInt(0));
 
             return position;
         }

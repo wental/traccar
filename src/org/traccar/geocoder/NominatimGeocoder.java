@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 - 2015 Anton Tananaev (anton@traccar.org)
+ * Copyright 2014 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,16 +19,22 @@ import javax.json.JsonObject;
 
 public class NominatimGeocoder extends JsonGeocoder {
 
-    public NominatimGeocoder() {
-        this("http://nominatim.openstreetmap.org/reverse", 0);
+    private static String formatUrl(String url, String key, String language) {
+        if (url == null) {
+            url = "http://nominatim.openstreetmap.org/reverse";
+        }
+        url += "?format=json&lat=%f&lon=%f&zoom=18&addressdetails=1";
+        if (key != null) {
+            url += "&key=" + key;
+        }
+        if (language != null) {
+            url += "&accept-language=" + language;
+        }
+        return url;
     }
 
-    public NominatimGeocoder(String url, int cacheSize) {
-        super(url + "?format=json&lat=%f&lon=%f&zoom=18&addressdetails=1", cacheSize);
-    }
-
-    public NominatimGeocoder(String url, String key, int cacheSize) {
-        super(url + "?format=json&lat=%f&lon=%f&zoom=18&addressdetails=1&key=" + key, cacheSize);
+    public NominatimGeocoder(String url, String key, String language, int cacheSize, AddressFormat addressFormat) {
+        super(formatUrl(url, key, language), cacheSize, addressFormat);
     }
 
     @Override

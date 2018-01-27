@@ -22,9 +22,11 @@ import org.traccar.model.Position;
 import org.traccar.reports.Events;
 import org.traccar.reports.Summary;
 import org.traccar.reports.Trips;
+import org.traccar.reports.model.StopReport;
 import org.traccar.reports.model.SummaryReport;
 import org.traccar.reports.model.TripReport;
 import org.traccar.reports.Route;
+import org.traccar.reports.Stops;
 
 @Path("reports")
 @Produces(MediaType.APPLICATION_JSON)
@@ -51,7 +53,7 @@ public class ReportResource extends BaseResource {
             @QueryParam("from") String from, @QueryParam("to") String to) throws SQLException, IOException {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         Route.getExcel(stream, getUserId(), deviceIds, groupIds,
-                DateUtil.parseDateTime(from), DateUtil.parseDateTime(to));
+                DateUtil.parseDate(from), DateUtil.parseDate(to));
 
         return Response.ok(stream.toByteArray())
                 .header(HttpHeaders.CONTENT_DISPOSITION, CONTENT_DISPOSITION_VALUE_XLSX).build();
@@ -76,7 +78,7 @@ public class ReportResource extends BaseResource {
             @QueryParam("from") String from, @QueryParam("to") String to) throws SQLException, IOException {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         Events.getExcel(stream, getUserId(), deviceIds, groupIds, types,
-                DateUtil.parseDateTime(from), DateUtil.parseDateTime(to));
+                DateUtil.parseDate(from), DateUtil.parseDate(to));
 
         return Response.ok(stream.toByteArray())
                 .header(HttpHeaders.CONTENT_DISPOSITION, CONTENT_DISPOSITION_VALUE_XLSX).build();
@@ -99,7 +101,7 @@ public class ReportResource extends BaseResource {
             @QueryParam("from") String from, @QueryParam("to") String to) throws SQLException, IOException {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         Summary.getExcel(stream, getUserId(), deviceIds, groupIds,
-                DateUtil.parseDateTime(from), DateUtil.parseDateTime(to));
+                DateUtil.parseDate(from), DateUtil.parseDate(to));
 
         return Response.ok(stream.toByteArray())
                 .header(HttpHeaders.CONTENT_DISPOSITION, CONTENT_DISPOSITION_VALUE_XLSX).build();
@@ -123,10 +125,35 @@ public class ReportResource extends BaseResource {
             @QueryParam("from") String from, @QueryParam("to") String to) throws SQLException, IOException {
         ByteArrayOutputStream stream = new ByteArrayOutputStream();
         Trips.getExcel(stream, getUserId(), deviceIds, groupIds,
-                DateUtil.parseDateTime(from), DateUtil.parseDateTime(to));
+                DateUtil.parseDate(from), DateUtil.parseDate(to));
 
         return Response.ok(stream.toByteArray())
                 .header(HttpHeaders.CONTENT_DISPOSITION, CONTENT_DISPOSITION_VALUE_XLSX).build();
     }
+
+    @Path("stops")
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Collection<StopReport> getStops(
+            @QueryParam("deviceId") final List<Long> deviceIds, @QueryParam("groupId") final List<Long> groupIds,
+            @QueryParam("from") String from, @QueryParam("to") String to) throws SQLException {
+        return Stops.getObjects(getUserId(), deviceIds, groupIds,
+                DateUtil.parseDate(from), DateUtil.parseDate(to));
+    }
+
+    @Path("stops")
+    @GET
+    @Produces(XLSX)
+    public Response getStopsExcel(
+            @QueryParam("deviceId") final List<Long> deviceIds, @QueryParam("groupId") final List<Long> groupIds,
+            @QueryParam("from") String from, @QueryParam("to") String to) throws SQLException, IOException {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        Stops.getExcel(stream, getUserId(), deviceIds, groupIds,
+                DateUtil.parseDate(from), DateUtil.parseDate(to));
+
+        return Response.ok(stream.toByteArray())
+                .header(HttpHeaders.CONTENT_DISPOSITION, CONTENT_DISPOSITION_VALUE_XLSX).build();
+    }
+
 
 }

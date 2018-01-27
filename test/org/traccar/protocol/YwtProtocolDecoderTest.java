@@ -9,8 +9,11 @@ public class YwtProtocolDecoderTest extends ProtocolTest {
     public void testDecode() throws Exception {
 
         YwtProtocolDecoder decoder = new YwtProtocolDecoder(new YwtProtocol());
+
+        verifyPosition(decoder, text(
+                "%RP,1222102985:1,170509033842,E102.146563,N14.582175,,0,320,10,0,00-00-00-00-00-00-00-00-00-00-00-00,,1db2-02b3-52004,3>941.523-32,7>1,19>-16,20>30.9V"));
         
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "%SN,0417061042:0,0,140117041203,404"));
 
         verifyPosition(decoder, text(

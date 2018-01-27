@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 - 2015 Anton Tananaev (anton@traccar.org)
+ * Copyright 2013 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package org.traccar.protocol;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
+import org.traccar.helper.BitUtil;
+import org.traccar.helper.Checksum;
 import org.traccar.helper.DateBuilder;
 import org.traccar.helper.DateUtil;
 import org.traccar.helper.Parser;
@@ -31,32 +33,41 @@ import java.util.regex.Pattern;
 
 public class TaipProtocolDecoder extends BaseProtocolDecoder {
 
-    private final boolean sendResponse;
-
-    public TaipProtocolDecoder(TaipProtocol protocol, boolean sendResponse) {
+    public TaipProtocolDecoder(TaipProtocol protocol) {
         super(protocol);
-        this.sendResponse = sendResponse;
     }
 
     private static final Pattern PATTERN = new PatternBuilder()
             .groupBegin()
             .expression("R[EP]V")                // type
             .groupBegin()
-            .number("dd")                        // event index
+            .number("(dd)")                      // event
             .number("(dddd)")                    // week
             .number("(d)")                       // day
             .groupEnd("?")
             .number("(d{5})")                    // seconds
             .or()
-            .text("RGP")                         // type
-            .number("(dd)(dd)(dd)")              // date
-            .number("(dd)(dd)(dd)")              // time
+            .expression("(?:RGP|RCQ|RBR)")       // type
+            .number("(dd)?")                     // event
+            .number("(dd)(dd)(dd)")              // date (mmddyy)
+            .number("(dd)(dd)(dd)")              // time (hhmmss)
             .groupEnd()
+            .groupBegin()
             .number("([-+]dd)(d{5})")            // latitude
             .number("([-+]ddd)(d{5})")           // longitude
+            .or()
+            .number("([-+])(dd)(dd.dddd)")       // latitude
+            .number("([-+])(ddd)(dd.dddd)")      // longitude
+            .groupEnd()
             .number("(ddd)")                     // speed
             .number("(ddd)")                     // course
-            .number("(d)")                       // fix mode
+            .groupBegin()
+            .number("(xx)")                      // input
+            .number("(xx)")                      // satellites
+            .number("(ddd)")                     // battery
+            .number("(x{8})")                    // odometer
+            .number("[01]")                      // gps power
+            .groupEnd("?")
             .any()
             .compile();
 
@@ -90,32 +101,66 @@ public class TaipProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
-        String week = parser.next();
-        String day = parser.next();
-        String seconds = parser.next();
-        if (seconds != null) {
-            if (week != null && day != null) {
-                position.setTime(getTime(Integer.parseInt(week), Integer.parseInt(day), Integer.parseInt(seconds)));
-            } else {
-                position.setTime(getTime(Integer.parseInt(seconds)));
+        Integer event = null;
+
+        if (parser.hasNext(3)) {
+            event = parser.nextInt();
+            position.setTime(getTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0)));
+        } else if (parser.hasNext()) {
+            position.setTime(getTime(parser.nextInt(0)));
+        }
+
+        if (parser.hasNext()) {
+            event = parser.nextInt();
+        }
+
+        if (event != null) {
+            switch (event) {
+                case 22:
+                    position.set(Position.KEY_ALARM, Position.ALARM_ACCELERATION);
+                    break;
+                case 23:
+                    position.set(Position.KEY_ALARM, Position.ALARM_BRAKING);
+                    break;
+                case 24:
+                    position.set(Position.KEY_ALARM, Position.ALARM_ACCIDENT);
+                    break;
+                case 26:
+                case 28:
+                    position.set(Position.KEY_ALARM, Position.ALARM_CORNERING);
+                    break;
+                default:
+                    position.set(Position.KEY_EVENT, event);
+                    break;
             }
         }
 
         if (parser.hasNext(6)) {
-            DateBuilder dateBuilder = new DateBuilder()
-                    .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                    .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-            position.setTime(dateBuilder.getDate());
+            position.setTime(parser.nextDateTime(Parser.DateTimeFormat.DMY_HMS));
         }
 
-        position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_DEG));
-        position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_DEG));
-        position.setSpeed(UnitsConverter.knotsFromMph(parser.nextDouble()));
-        position.setCourse(parser.nextDouble());
-        position.setValid(parser.nextInt() != 0);
+        if (parser.hasNext(4)) {
+            position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_DEG));
+            position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_DEG));
+        }
+        if (parser.hasNext(6)) {
+            position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.HEM_DEG_MIN));
+            position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.HEM_DEG_MIN));
+        }
+
+        position.setSpeed(UnitsConverter.knotsFromMph(parser.nextDouble(0)));
+        position.setCourse(parser.nextDouble(0));
+
+        if (parser.hasNext(4)) {
+            position.set(Position.KEY_INPUT, parser.nextHexInt(0));
+            position.set(Position.KEY_SATELLITES, parser.nextHexInt(0));
+            position.set(Position.KEY_BATTERY, parser.nextInt(0));
+            position.set(Position.KEY_ODOMETER, parser.nextLong(16, 0));
+        }
+
+        position.setValid(true);
 
         String[] attributes = null;
         beginIndex = sentence.indexOf(';');
@@ -127,6 +172,16 @@ public class TaipProtocolDecoder extends BaseProtocolDecoder {
             attributes = sentence.substring(beginIndex, endIndex).split(";");
         }
 
+        return decodeAttributes(channel, remoteAddress, position, attributes);
+    }
+
+    private Position decodeAttributes(
+            Channel channel, SocketAddress remoteAddress, Position position, String[] attributes) {
+
+        String uniqueId = null;
+        DeviceSession deviceSession = null;
+        String messageIndex = null;
+
         if (attributes != null) {
             for (String attribute : attributes) {
                 int index = attribute.indexOf('=');
@@ -134,41 +189,58 @@ public class TaipProtocolDecoder extends BaseProtocolDecoder {
                     String key = attribute.substring(0, index).toLowerCase();
                     String value = attribute.substring(index + 1);
                     switch (key) {
-
                         case "id":
-                            DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, value);
+                            uniqueId = value;
+                            deviceSession = getDeviceSession(channel, remoteAddress, value);
                             if (deviceSession != null) {
                                 position.setDeviceId(deviceSession.getDeviceId());
                             }
-                            if (sendResponse && channel != null) {
-                                channel.write(value);
-                            }
                             break;
-
+                        case "io":
+                            position.set(Position.KEY_IGNITION, BitUtil.check(value.charAt(0) - '0', 0));
+                            position.set(Position.KEY_CHARGE, BitUtil.check(value.charAt(0) - '0', 1));
+                            position.set(Position.KEY_OUTPUT, value.charAt(1) - '0');
+                            position.set(Position.KEY_INPUT, value.charAt(2) - '0');
+                            break;
+                        case "ix":
+                            position.set(Position.PREFIX_IO + 1, value);
+                            break;
+                        case "ad":
+                            position.set(Position.PREFIX_ADC + 1, Integer.parseInt(value));
+                            break;
                         case "sv":
-                            position.set(Position.KEY_SATELLITES, value);
+                            position.set(Position.KEY_SATELLITES, Integer.parseInt(value));
                             break;
-
                         case "bl":
-                            position.set(Position.KEY_BATTERY, value);
+                            position.set(Position.KEY_BATTERY, Integer.parseInt(value) * 0.001);
                             break;
-
                         case "vo":
                             position.set(Position.KEY_ODOMETER, Long.parseLong(value));
                             break;
-
                         default:
                             position.set(key, value);
                             break;
-
                     }
+                } else if (attribute.startsWith("#")) {
+                    messageIndex = attribute;
                 }
             }
         }
 
-        if (position.getDeviceId() != 0) {
+        if (deviceSession != null) {
+            if (channel != null) {
+                if (messageIndex != null) {
+                    String response = ">ACK;" + messageIndex + ";ID=" + uniqueId + ";*";
+                    response += String.format("%02X", Checksum.xor(response)) + "<";
+                    channel.write(response, remoteAddress);
+                } else {
+                    channel.write(uniqueId, remoteAddress);
+                }
+            }
+
             return position;
         }
+
         return null;
     }
 

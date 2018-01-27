@@ -10,10 +10,14 @@ public interface Protocol {
 
     String getName();
 
-    Collection<String> getSupportedCommands();
+    Collection<String> getSupportedDataCommands();
 
-    void sendCommand(ActiveDevice activeDevice, Command command);
+    void sendDataCommand(ActiveDevice activeDevice, Command command);
 
     void initTrackerServers(List<TrackerServer> serverList);
+
+    Collection<String> getSupportedTextCommands();
+
+    void sendTextCommand(String destAddress, Command command) throws Exception;
 
 }

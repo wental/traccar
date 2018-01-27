@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2015 Anton Tananaev (anton@traccar.org)
+ * Copyright 2012 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,16 +21,19 @@ import javax.json.JsonString;
 
 public class GoogleGeocoder extends JsonGeocoder {
 
-    public GoogleGeocoder() {
-        this(0);
+    private static String formatUrl(String key, String language) {
+        String url = "https://maps.googleapis.com/maps/api/geocode/json?latlng=%f,%f";
+        if (key != null) {
+            url += "&key=" + key;
+        }
+        if (language != null) {
+            url += "&language=" + language;
+        }
+        return url;
     }
 
-    public GoogleGeocoder(int cacheSize) {
-        super("http://maps.googleapis.com/maps/api/geocode/json?latlng=%f,%f", cacheSize);
-    }
-
-    public GoogleGeocoder(String key, int cacheSize) {
-        super("https://maps.googleapis.com/maps/api/geocode/json?latlng=%f,%f&key=" + key, cacheSize);
+    public GoogleGeocoder(String key, String language, int cacheSize, AddressFormat addressFormat) {
+        super(formatUrl(key, language), cacheSize, addressFormat);
     }
 
     @Override

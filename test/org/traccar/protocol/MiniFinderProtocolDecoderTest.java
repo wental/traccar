@@ -10,17 +10,29 @@ public class MiniFinderProtocolDecoderTest extends ProtocolTest {
 
         MiniFinderProtocolDecoder decoder = new MiniFinderProtocolDecoder(new MiniFinderProtocol());
 
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
+                "!1,867273023933661,V07S.5701.1621,100"));
+
+        verifyNull(decoder, text(
                 "!1,123456789012345"));
 
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "!5,17,V"));
 
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "!1,860719027585011"));
 
         verifyPosition(decoder, text(
-                "!D,28/11/16,00:04:09,42.926067,-85.747589,124,236,140001,179.8,60,11,16,0;"));
+                "!D,02/05/17,19:56:17,47.083542,15.482373,0,0,100001,479.3,100,4,9,0"));
+
+        verifyPosition(decoder, text(
+                "!D,15/04/17,13:58:53,51.483067,-0.452548,60,180,140001,28.7,47,4,13,0"));
+
+        verifyPosition(decoder, text(
+                "!D,07/04/17,05:42:26,-37.588970,145.121231,0,0,0c0001,185.2,92,7,14,1.2"));
+
+        verifyPosition(decoder, text(
+                "!D,28/11/16,00:04:09,42.926067,-85.747589,124,236,140001,179.8,60,11,16,0"));
 
         verifyPosition(decoder, text(
                 "!C,30/1/16,1:1:6,31.259157,30.020910,0,0,100001,25.32,100,0.03,0.01,0"));
@@ -40,7 +52,7 @@ public class MiniFinderProtocolDecoderTest extends ProtocolTest {
         verifyPosition(decoder, text(
                 "!D,08/07/15,02:01:32,40.428230,-3.704950,4,170,170001,682.7,43,6,13,0"));
 
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "!1,860719020212696"));
 
         verifyPosition(decoder, text(

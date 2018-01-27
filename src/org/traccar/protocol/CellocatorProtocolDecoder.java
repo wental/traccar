@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 Anton Tananaev (anton@traccar.org)
+ * Copyright 2013 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ public class CellocatorProtocolDecoder extends BaseProtocolDecoder {
 
     private byte commandCount;
 
-    private void sendReply(Channel channel, long deviceId, byte packetNumber) {
+    private void sendReply(Channel channel, SocketAddress remoteAddress, long deviceId, byte packetNumber) {
         ChannelBuffer reply = ChannelBuffers.directBuffer(ByteOrder.LITTLE_ENDIAN, 28);
         reply.writeByte('M');
         reply.writeByte('C');
@@ -64,7 +64,20 @@ public class CellocatorProtocolDecoder extends BaseProtocolDecoder {
         reply.writeByte(checksum);
 
         if (channel != null) {
-            channel.write(reply);
+            channel.write(reply, remoteAddress);
+        }
+    }
+
+    private String decodeAlarm(short reason) {
+        switch (reason) {
+            case 70:
+                return Position.ALARM_SOS;
+            case 80:
+                return Position.ALARM_POWER_CUT;
+            case 81:
+                return Position.ALARM_LOW_POWER;
+            default:
+                return null;
         }
     }
 
@@ -83,12 +96,11 @@ public class CellocatorProtocolDecoder extends BaseProtocolDecoder {
         }
         byte packetNumber = buf.readByte();
 
-        sendReply(channel, deviceUniqueId, packetNumber);
+        sendReply(channel, remoteAddress, deviceUniqueId, packetNumber);
 
         if (type == MSG_CLIENT_STATUS) {
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
 
             DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, String.valueOf(deviceUniqueId));
             if (deviceSession == null) {
@@ -96,9 +108,9 @@ public class CellocatorProtocolDecoder extends BaseProtocolDecoder {
             }
             position.setDeviceId(deviceSession.getDeviceId());
 
-            buf.readUnsignedByte(); // hardware version
-            buf.readUnsignedByte(); // software version
-            buf.readUnsignedByte(); // protocol version
+            position.set(Position.KEY_VERSION_HW, buf.readUnsignedByte());
+            position.set(Position.KEY_VERSION_FW, buf.readUnsignedByte());
+            position.set("protocolVersion", buf.readUnsignedByte());
 
             position.set(Position.KEY_STATUS, buf.getUnsignedByte(buf.readerIndex()) & 0x0f);
 
@@ -106,25 +118,27 @@ public class CellocatorProtocolDecoder extends BaseProtocolDecoder {
             operator += buf.readUnsignedByte();
 
             buf.readUnsignedByte(); // reason data
-            buf.readUnsignedByte(); // reason
-            buf.readUnsignedByte(); // mode
-            buf.readUnsignedInt(); // IO
+            position.set(Position.KEY_ALARM, decodeAlarm(buf.readUnsignedByte()));
+
+            position.set("mode", buf.readUnsignedByte());
+            position.set(Position.PREFIX_IO + 1, buf.readUnsignedInt());
 
             operator <<= 8;
             operator += buf.readUnsignedByte();
-            position.set("operator", operator);
+            position.set(Position.KEY_OPERATOR, operator);
 
-            buf.readUnsignedInt(); // ADC
-            buf.readUnsignedMedium(); // Odometer
+            position.set(Position.PREFIX_ADC + 1, buf.readUnsignedInt());
+            position.set(Position.KEY_ODOMETER, buf.readUnsignedMedium());
             buf.skipBytes(6); // multi-purpose data
 
-            buf.readUnsignedShort(); // gps fix
-            buf.readUnsignedByte(); // location status
-            buf.readUnsignedByte(); // mode 1
-            buf.readUnsignedByte(); // mode 2
+            position.set(Position.KEY_GPS, buf.readUnsignedShort());
+            position.set("locationStatus", buf.readUnsignedByte());
+            position.set("mode1", buf.readUnsignedByte());
+            position.set("mode2", buf.readUnsignedByte());
 
-            position.setValid(buf.readUnsignedByte() >= 3); // satellites
+            position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
 
+            position.setValid(true);
             position.setLongitude(buf.readInt() / Math.PI * 180 / 100000000);
             position.setLatitude(buf.readInt() / Math.PI * 180 / 100000000.0);
             position.setAltitude(buf.readInt() * 0.01);

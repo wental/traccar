@@ -67,8 +67,7 @@ public class BceProtocolDecoder extends BaseProtocolDecoder {
 
             while (buf.readerIndex() < dataEnd) {
 
-                Position position = new Position();
-                position.setProtocol(getProtocolName());
+                Position position = new Position(getProtocolName());
                 position.setDeviceId(deviceSession.getDeviceId());
 
                 int structEnd = buf.readUnsignedByte() + buf.readerIndex();
@@ -132,8 +131,8 @@ public class BceProtocolDecoder extends BaseProtocolDecoder {
                     if (BitUtil.check(mask, 14)) {
                         position.setNetwork(new Network(CellTower.from(
                                 buf.readUnsignedShort(), buf.readUnsignedByte(),
-                                buf.readUnsignedShort(), buf.readUnsignedShort())));
-                        position.set(Position.KEY_RSSI, buf.readUnsignedByte());
+                                buf.readUnsignedShort(), buf.readUnsignedShort(),
+                                buf.readUnsignedByte())));
                         buf.readUnsignedByte();
                     }
 

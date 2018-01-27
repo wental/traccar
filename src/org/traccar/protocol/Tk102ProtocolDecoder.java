@@ -49,7 +49,7 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
     private static final Pattern PATTERN = new PatternBuilder()
             .text("(")
             .expression("[A-Z]+")
-            .number("(dd)(dd)(dd)")              // time
+            .number("(dd)(dd)(dd)")              // time (hhmmss)
             .expression("([AV])")                // validity
             .number("(dd)(dd.dddd)([NS])")       // latitude
             .number("(ddd)(dd.dddd)([EW])")      // longitude
@@ -117,19 +117,18 @@ public class Tk102ProtocolDecoder extends BaseProtocolDecoder {
                 return null;
             }
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
 
             DateBuilder dateBuilder = new DateBuilder()
-                    .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
+                    .setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
             position.setValid(parser.next().equals("A"));
             position.setLatitude(parser.nextCoordinate());
             position.setLongitude(parser.nextCoordinate());
-            position.setSpeed(parser.nextDouble());
+            position.setSpeed(parser.nextDouble(0));
 
-            dateBuilder.setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
+            dateBuilder.setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
             position.setTime(dateBuilder.getDate());
 
             return position;

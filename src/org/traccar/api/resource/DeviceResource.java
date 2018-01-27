@@ -1,5 +1,5 @@
 /*
- * Copyright 2015 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2015 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,16 @@
 package org.traccar.api.resource;
 
 import org.traccar.Context;
-import org.traccar.api.BaseResource;
+import org.traccar.api.BaseObjectResource;
+import org.traccar.database.DeviceManager;
+import org.traccar.helper.LogAction;
 import org.traccar.model.Device;
 import org.traccar.model.DeviceTotalDistance;
 
 import javax.ws.rs.Consumes;
-import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
-import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
@@ -34,77 +33,67 @@ import javax.ws.rs.core.Response;
 
 import java.sql.SQLException;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Path("devices")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-public class DeviceResource extends BaseResource {
+public class DeviceResource extends BaseObjectResource<Device> {
+
+    public DeviceResource() {
+        super(Device.class);
+    }
 
     @GET
     public Collection<Device> get(
-            @QueryParam("all") boolean all, @QueryParam("userId") long userId) throws SQLException {
+            @QueryParam("all") boolean all, @QueryParam("userId") long userId,
+            @QueryParam("uniqueId") List<String> uniqueIds,
+            @QueryParam("id") List<Long> deviceIds) throws SQLException {
+        DeviceManager deviceManager = Context.getDeviceManager();
+        Set<Long> result = null;
         if (all) {
-            Context.getPermissionsManager().checkAdmin(getUserId());
-            return Context.getDeviceManager().getAllDevices();
-        } else {
+            if (Context.getPermissionsManager().getUserAdmin(getUserId())) {
+                result = deviceManager.getAllItems();
+            } else {
+                Context.getPermissionsManager().checkManager(getUserId());
+                result = deviceManager.getManagedItems(getUserId());
+            }
+        } else if (uniqueIds.isEmpty() && deviceIds.isEmpty()) {
             if (userId == 0) {
                 userId = getUserId();
             }
             Context.getPermissionsManager().checkUser(getUserId(), userId);
-            return Context.getDeviceManager().getDevices(userId);
-        }
-    }
-
-    @POST
-    public Response add(Device entity) throws SQLException {
-        Context.getPermissionsManager().checkReadonly(getUserId());
-        int deviceLimit = Context.getPermissionsManager().getUser(getUserId()).getDeviceLimit();
-        if (deviceLimit != 0) {
-            int deviceCount = Context.getPermissionsManager().getDevicePermissions(getUserId()).size();
-            if (deviceCount >= deviceLimit) {
-                throw new SecurityException("User device limit reached");
+            if (Context.getPermissionsManager().getUserAdmin(getUserId())) {
+                result = deviceManager.getAllUserItems(userId);
+            } else {
+                result = deviceManager.getUserItems(userId);
+            }
+        } else {
+            result = new HashSet<>();
+            for (String uniqueId : uniqueIds) {
+                Device device = deviceManager.getByUniqueId(uniqueId);
+                Context.getPermissionsManager().checkDevice(getUserId(), device.getId());
+                result.add(device.getId());
+            }
+            for (Long deviceId : deviceIds) {
+                Context.getPermissionsManager().checkDevice(getUserId(), deviceId);
+                result.add(deviceId);
             }
         }
-        Context.getDeviceManager().addDevice(entity);
-        Context.getDataManager().linkDevice(getUserId(), entity.getId());
-        Context.getPermissionsManager().refreshPermissions();
-        if (Context.getGeofenceManager() != null) {
-            Context.getGeofenceManager().refresh();
-        }
-        return Response.ok(entity).build();
-    }
-
-    @Path("{id}")
-    @PUT
-    public Response update(Device entity) throws SQLException {
-        Context.getPermissionsManager().checkReadonly(getUserId());
-        Context.getPermissionsManager().checkDevice(getUserId(), entity.getId());
-        Context.getDeviceManager().updateDevice(entity);
-        if (Context.getGeofenceManager() != null) {
-            Context.getGeofenceManager().refresh();
-        }
-        return Response.ok(entity).build();
-    }
-
-    @Path("{id}")
-    @DELETE
-    public Response remove(@PathParam("id") long id) throws SQLException {
-        Context.getPermissionsManager().checkReadonly(getUserId());
-        Context.getPermissionsManager().checkDevice(getUserId(), id);
-        Context.getDeviceManager().removeDevice(id);
-        Context.getPermissionsManager().refreshPermissions();
-        if (Context.getGeofenceManager() != null) {
-            Context.getGeofenceManager().refresh();
-        }
-        Context.getAliasesManager().removeDevice(id);
-        return Response.noContent().build();
+        return deviceManager.getItems(result);
     }
 
     @Path("{id}/distance")
     @PUT
     public Response updateTotalDistance(DeviceTotalDistance entity) throws SQLException {
-        Context.getPermissionsManager().checkAdmin(getUserId());
+        if (!Context.getPermissionsManager().getUserAdmin(getUserId())) {
+            Context.getPermissionsManager().checkManager(getUserId());
+            Context.getPermissionsManager().checkPermission(Device.class, getUserId(), entity.getDeviceId());
+        }
         Context.getDeviceManager().resetTotalDistance(entity);
+        LogAction.resetTotalDistance(getUserId(), entity.getDeviceId());
         return Response.noContent().build();
     }
 

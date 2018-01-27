@@ -19,7 +19,6 @@ import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
 import org.traccar.helper.BitUtil;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.model.Position;
@@ -37,8 +36,8 @@ public class HaicomProtocolDecoder extends BaseProtocolDecoder {
             .text("$GPRS")
             .number("(d+),")                     // imei
             .expression("([^,]+),")              // version
-            .number("(dd)(dd)(dd),")             // date
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dd)(dd)(dd),")             // date (yymmdd)
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .number("(d)")                       // flags
             .number("(dd)(d{5})")                // latitude
             .number("(ddd)(d{5}),")              // longitude
@@ -63,8 +62,7 @@ public class HaicomProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
@@ -72,40 +70,37 @@ public class HaicomProtocolDecoder extends BaseProtocolDecoder {
         }
         position.setDeviceId(deviceSession.getDeviceId());
 
-        position.set(Position.KEY_VERSION, parser.next());
+        position.set(Position.KEY_VERSION_FW, parser.next());
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setDate(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setTime(dateBuilder.getDate());
+        position.setTime(parser.nextDateTime());
 
-        int flags = parser.nextInt();
+        int flags = parser.nextInt(0);
 
         position.setValid(BitUtil.check(flags, 0));
 
-        double latitude = parser.nextDouble() + parser.nextDouble() / 60000;
+        double latitude = parser.nextDouble(0) + parser.nextDouble(0) / 60000;
         if (BitUtil.check(flags, 2)) {
             position.setLatitude(latitude);
         } else {
             position.setLatitude(-latitude);
         }
 
-        double longitude = parser.nextDouble() + parser.nextDouble() / 60000;
+        double longitude = parser.nextDouble(0) + parser.nextDouble(0) / 60000;
         if (BitUtil.check(flags, 1)) {
             position.setLongitude(longitude);
         } else {
             position.setLongitude(-longitude);
         }
 
-        position.setSpeed(parser.nextDouble() / 10);
-        position.setCourse(parser.nextDouble() / 10);
+        position.setSpeed(parser.nextDouble(0) / 10);
+        position.setCourse(parser.nextDouble(0) / 10);
 
         position.set(Position.KEY_STATUS, parser.next());
-        position.set(Position.KEY_RSSI, parser.next());
-        position.set(Position.KEY_GPS, parser.next());
+        position.set("gprsCount", parser.next());
+        position.set("powersaveCountdown", parser.next());
         position.set(Position.KEY_INPUT, parser.next());
         position.set(Position.KEY_OUTPUT, parser.next());
-        position.set(Position.KEY_BATTERY, parser.nextDouble() / 10);
+        position.set(Position.KEY_BATTERY, parser.nextDouble(0) * 0.1);
 
         return position;
     }

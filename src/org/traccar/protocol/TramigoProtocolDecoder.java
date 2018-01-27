@@ -1,5 +1,5 @@
 /*
- * Copyright 2014 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2014 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -61,8 +61,7 @@ public class TramigoProtocolDecoder extends BaseProtocolDecoder {
         long id = buf.readUnsignedInt();
         buf.readUnsignedInt(); // time
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         position.set(Position.KEY_INDEX, index);
         position.setValid(true);
 
@@ -82,19 +81,19 @@ public class TramigoProtocolDecoder extends BaseProtocolDecoder {
             position.setLatitude(buf.readUnsignedInt() * 0.0000001);
             position.setLongitude(buf.readUnsignedInt() * 0.0000001);
 
-            buf.readUnsignedShort(); // GSM signal quality
-            buf.readUnsignedShort(); // satellites in fix
-            buf.readUnsignedShort(); // satellites in track
-            buf.readUnsignedShort(); // GPS antenna state
+            position.set(Position.KEY_RSSI, buf.readUnsignedShort());
+            position.set(Position.KEY_SATELLITES, buf.readUnsignedShort());
+            position.set(Position.KEY_SATELLITES_VISIBLE, buf.readUnsignedShort());
+            position.set("gpsAntennaStatus", buf.readUnsignedShort());
 
             position.setSpeed(buf.readUnsignedShort() * 0.194384);
-            position.setCourse((double) buf.readUnsignedShort());
+            position.setCourse(buf.readUnsignedShort());
 
-            buf.readUnsignedInt(); // distance
+            position.set(Position.KEY_ODOMETER, buf.readUnsignedInt());
 
             position.set(Position.KEY_BATTERY, buf.readUnsignedShort());
 
-            buf.readUnsignedShort(); // battery charger status
+            position.set(Position.KEY_CHARGE, buf.readUnsignedShort());
 
             position.setTime(new Date(buf.readUnsignedInt() * 1000));
 
@@ -130,12 +129,13 @@ public class TramigoProtocolDecoder extends BaseProtocolDecoder {
                 position.setSpeed(UnitsConverter.knotsFromKph(Double.parseDouble(matcher.group(2))));
             }
 
-            pattern = Pattern.compile("(\\d{1,2}:\\d{2} \\w{3} \\d{1,2})");
+            pattern = Pattern.compile("(\\d{1,2}:\\d{2}(:\\d{2})? \\w{3} \\d{1,2})");
             matcher = pattern.matcher(sentence);
             if (!matcher.find()) {
                 return null;
             }
-            DateFormat dateFormat = new SimpleDateFormat("HH:mm MMM d yyyy", Locale.ENGLISH);
+            DateFormat dateFormat = new SimpleDateFormat(
+                    matcher.group(2) != null ? "HH:mm:ss MMM d yyyy" : "HH:mm MMM d yyyy", Locale.ENGLISH);
             position.setTime(DateUtil.correctYear(
                     dateFormat.parse(matcher.group(1) + " " + Calendar.getInstance().get(Calendar.YEAR))));
 

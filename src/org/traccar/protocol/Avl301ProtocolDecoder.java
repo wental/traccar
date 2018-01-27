@@ -88,9 +88,8 @@ public class Avl301ProtocolDecoder extends BaseProtocolDecoder {
                 return null;
             }
 
-            Position position = new Position();
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
-            position.setProtocol(getProtocolName());
 
             DateBuilder dateBuilder = new DateBuilder()
                     .setDate(buf.readUnsignedByte(), buf.readUnsignedByte(), buf.readUnsignedByte())
@@ -100,7 +99,7 @@ public class Avl301ProtocolDecoder extends BaseProtocolDecoder {
             int gpsLength = buf.readUnsignedByte(); // gps len and sat
             position.set(Position.KEY_SATELLITES, gpsLength & 0xf);
 
-            buf.readUnsignedByte(); // satellites
+            position.set(Position.KEY_SATELLITES_VISIBLE, buf.readUnsignedByte()); // satellites
 
             double latitude = buf.readUnsignedInt() / 600000.0;
             double longitude = buf.readUnsignedInt() / 600000.0;

@@ -1,6 +1,6 @@
 /*
- * Copyright 2016 Anton Tananaev (anton@traccar.org)
- * Copyright 2016 Andrey Kunitsyn (andrey@traccar.org)
+ * Copyright 2016 - 2017 Anton Tananaev (anton@traccar.org)
+ * Copyright 2016 - 2017 Andrey Kunitsyn (andrey@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,15 @@ package org.traccar.reports.model;
 public class SummaryReport extends BaseReport {
 
     private long engineHours; // milliseconds
+
     public long getEngineHours() {
         return engineHours;
     }
+
     public void setEngineHours(long engineHours) {
         this.engineHours = engineHours;
     }
+
     public void addEngineHours(long engineHours) {
         this.engineHours += engineHours;
     }

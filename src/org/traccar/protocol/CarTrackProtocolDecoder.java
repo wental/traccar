@@ -40,7 +40,7 @@ public class CarTrackProtocolDecoder extends BaseProtocolDecoder {
             .text("&A")
             .number("(dddd)")                    // command
             .text("&B")
-            .number("(dd)(dd)(dd).(ddd),")       // time
+            .number("(dd)(dd)(dd).(ddd),")       // time (hhmmss.sss)
             .expression("([AV]),")               // validity
             .number("(dd)(dd.dddd),")            // latitude
             .expression("([NS]),")
@@ -65,8 +65,7 @@ public class CarTrackProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
@@ -74,18 +73,18 @@ public class CarTrackProtocolDecoder extends BaseProtocolDecoder {
         }
         position.setDeviceId(deviceSession.getDeviceId());
 
-        position.set("command", parser.next());
+        position.set(Position.KEY_COMMAND, parser.next());
 
         DateBuilder dateBuilder = new DateBuilder()
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt(), parser.nextInt());
+                .setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
         position.setValid(parser.next().equals("A"));
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
 
-        dateBuilder.setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
+        dateBuilder.setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
         position.setTime(dateBuilder.getDate());
 
         position.set(Position.PREFIX_IO + 1, parser.next());

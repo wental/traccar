@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2012 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,11 @@
  */
 package org.traccar;
 
+import org.jboss.netty.channel.ChannelException;
+import org.traccar.helper.Log;
+
 import java.io.File;
+import java.net.BindException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLDecoder;
@@ -23,12 +27,15 @@ import java.nio.charset.StandardCharsets;
 import java.util.Enumeration;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 
 public class ServerManager {
 
     private final List<TrackerServer> serverList = new LinkedList<>();
+    private final Map<String, BaseProtocol> protocolList = new ConcurrentHashMap<>();
 
     public ServerManager() throws Exception {
 
@@ -64,13 +71,24 @@ public class ServerManager {
             if (BaseProtocol.class.isAssignableFrom(protocolClass)) {
                 BaseProtocol baseProtocol = (BaseProtocol) protocolClass.newInstance();
                 initProtocolServer(baseProtocol);
+                protocolList.put(baseProtocol.getName(), baseProtocol);
             }
         }
     }
 
+    public BaseProtocol getProtocol(String name) {
+        return protocolList.get(name);
+    }
+
     public void start() {
         for (TrackerServer server: serverList) {
-            server.start();
+            try {
+                server.start();
+            } catch (ChannelException e) {
+                if (e.getCause() instanceof BindException) {
+                    Log.warning("One of the protocols is disabled due to port conflict");
+                }
+            }
         }
     }
 
@@ -78,8 +96,6 @@ public class ServerManager {
         for (TrackerServer server: serverList) {
             server.stop();
         }
-
-        // Release resources
         GlobalChannelFactory.release();
         GlobalTimer.release();
     }

@@ -15,10 +15,10 @@
  */
 package org.traccar.model;
 
-import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import org.traccar.Context;
 
-@JsonSerialize(include = JsonSerialize.Inclusion.NON_NULL)
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class CellTower {
 
     public static CellTower from(int mcc, int mnc, int lac, long cid) {
@@ -104,6 +104,12 @@ public class CellTower {
 
     public void setSignalStrength(Integer signalStrength) {
         this.signalStrength = signalStrength;
+    }
+
+    public void setOperator(long operator) {
+        String operatorString = String.valueOf(operator);
+        mobileCountryCode = Integer.parseInt(operatorString.substring(0, 3));
+        mobileNetworkCode = Integer.parseInt(operatorString.substring(3));
     }
 
 }

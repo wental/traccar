@@ -1,15 +1,16 @@
 package org.traccar.protocol;
 
-import org.junit.Assert;
 import org.junit.Test;
 import org.traccar.ProtocolTest;
+
+import static org.junit.Assert.assertEquals;
 
 public class GatorProtocolDecoderTest extends ProtocolTest {
     
     @Test
     public void testDecodeId() {
         
-        Assert.assertEquals("3512345006", GatorProtocolDecoder.decodeId(12, 162, 50, 134));
+        assertEquals("3512345006", GatorProtocolDecoder.decodeId(12, 162, 50, 134));
         
     }
 
@@ -21,13 +22,13 @@ public class GatorProtocolDecoderTest extends ProtocolTest {
         verifyAttributes(decoder, binary(
                 "2424800026364101b31608041108380273453415301532000000008000010000122800000124000000c40d"));
 
-        verifyNothing(decoder, binary(
+        verifyNull(decoder, binary(
                 "242421000658e3d851150d"));
 
         verifyAttributes(decoder, binary(
                 "242480002658e3d851a60101c662bc00000000000000000000000000470007a30b0c00b10fc900ff00460d"));
 
-        verifyNothing(decoder, binary(
+        verifyNull(decoder, binary(
                 "242421000643e30282070d"));
 
         verifyPosition(decoder, binary(

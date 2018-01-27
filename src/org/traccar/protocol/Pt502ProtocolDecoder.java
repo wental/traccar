@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 - 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2012 - 2017 Anton Tananaev (anton@traccar.org)
  * Copyright 2012 Luis Parada (luis.parada@gmail.com)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,15 +41,15 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
             .any().text("$")
             .expression("([^,]+),")              // type
             .number("(d+),")                     // id
-            .number("(dd)(dd)(dd).(ddd),")       // time
+            .number("(dd)(dd)(dd).(ddd),")       // time (hhmmss.sss)
             .expression("([AV]),")               // validity
-            .number("(dd)(dd.dddd),")            // latitude
+            .number("(d+)(dd.dddd),")            // latitude
             .expression("([NS]),")
-            .number("(ddd)(dd.dddd),")           // longitude
+            .number("(d+)(dd.dddd),")            // longitude
             .expression("([EW]),")
             .number("(d+.d+)?,")                 // speed
             .number("(d+.d+)?,")                 // course
-            .number("(dd)(dd)(dd),,,")           // date
+            .number("(dd)(dd)(dd),,,")           // date (ddmmyy)
             .expression("./")
             .expression("([01])+,")              // input
             .expression("([01])+/")              // output
@@ -62,18 +62,24 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
 
     private String decodeAlarm(String value) {
         switch (value) {
+            case "IN1":
+                return Position.ALARM_SOS;
+            case "GOF":
+                return Position.ALARM_GEOFENCE;
             case "TOW":
                 return Position.ALARM_TOW;
             case "HDA":
-                return Position.ALARM_ACCELETATION;
+                return Position.ALARM_ACCELERATION;
             case "HDB":
-                return Position.ALARM_BREAKING;
+                return Position.ALARM_BRAKING;
             case "FDA":
                 return Position.ALARM_FATIGUE_DRIVING;
             case "SKA":
                 return Position.ALARM_VIBRATION;
             case "PMA":
                 return Position.ALARM_MOVEMENT;
+            case "CPA":
+                return Position.ALARM_POWER_CUT;
             default:
                 return null;
         }
@@ -83,15 +89,12 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
 
-        String sentence = (String) msg;
-
-        Parser parser = new Parser(PATTERN, sentence);
+        Parser parser = new Parser(PATTERN, (String) msg);
         if (!parser.matches()) {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         String type = parser.next();
 
@@ -109,15 +112,15 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
         position.setDeviceId(deviceSession.getDeviceId());
 
         DateBuilder dateBuilder = new DateBuilder()
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt(), parser.nextInt());
+                .setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
         position.setValid(parser.next().equals("A"));
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
 
-        dateBuilder.setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
+        dateBuilder.setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
         position.setTime(dateBuilder.getDate());
 
         position.set(Position.KEY_INPUT, parser.next());
@@ -130,11 +133,11 @@ public class Pt502ProtocolDecoder extends BaseProtocolDecoder {
             }
         }
 
-        position.set(Position.KEY_ODOMETER, parser.nextInt());
-        position.set(Position.KEY_RFID, parser.next());
+        position.set(Position.KEY_ODOMETER, parser.nextInt(0));
+        position.set(Position.KEY_DRIVER_UNIQUE_ID, parser.next());
 
         if (parser.hasNext()) {
-            int value = parser.nextInt(16);
+            int value = parser.nextHexInt(0);
             position.set(Position.KEY_BATTERY, value >> 8);
             position.set(Position.KEY_RSSI, (value >> 4) & 0xf);
             position.set(Position.KEY_SATELLITES, value & 0xf);

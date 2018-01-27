@@ -37,12 +37,12 @@ public class AutoGradeProtocolDecoder extends BaseProtocolDecoder {
             .text("(")
             .number("d{12}")                     // index
             .number("(d{15})")                   // imei
-            .number("(dd)(dd)(dd)")              // date
+            .number("(dd)(dd)(dd)")              // date (ddmmyy)
             .expression("([AV])")                // validity
             .number("(d+)(dd.d+)([NS])")         // latitude
             .number("(d+)(dd.d+)([EW])")         // longitude
             .number("([d.]{5})")                 // speed
-            .number("(dd)(dd)(dd)")              // time
+            .number("(dd)(dd)(dd)")              // time (hhmmss)
             .number("([d.]{6})")                 // course
             .expression("(.)")                   // status
             .number("A(xxxx)")
@@ -72,22 +72,21 @@ public class AutoGradeProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
         DateBuilder dateBuilder = new DateBuilder()
-                .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
+                .setDateReverse(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
 
         position.setValid(parser.next().equals("A"));
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
-        position.setSpeed(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
 
-        dateBuilder.setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
+        dateBuilder.setTime(parser.nextInt(0), parser.nextInt(0), parser.nextInt(0));
         position.setTime(dateBuilder.getDate());
 
-        position.setCourse(parser.nextDouble());
+        position.setCourse(parser.nextDouble(0));
 
         int status = parser.next().charAt(0);
         position.set(Position.KEY_STATUS, status);

@@ -66,9 +66,8 @@ public class CalAmpProtocolDecoder extends BaseProtocolDecoder {
 
     private Position decodePosition(DeviceSession deviceSession, int type, ChannelBuffer buf) {
 
-        Position position = new Position();
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
-        position.setProtocol(getProtocolName());
 
         position.setTime(new Date(buf.readUnsignedInt() * 1000));
         if (type != MSG_MINI_EVENT_REPORT) {
@@ -104,7 +103,9 @@ public class CalAmpProtocolDecoder extends BaseProtocolDecoder {
             position.set(Position.KEY_HDOP, buf.readUnsignedByte());
         }
 
-        position.set(Position.KEY_INPUT, buf.readUnsignedByte());
+        int input = buf.readUnsignedByte();
+        position.set(Position.KEY_INPUT, input);
+        position.set(Position.KEY_IGNITION, BitUtil.check(input, 0));
 
         if (type != MSG_MINI_EVENT_REPORT) {
             position.set(Position.KEY_STATUS, buf.readUnsignedByte());

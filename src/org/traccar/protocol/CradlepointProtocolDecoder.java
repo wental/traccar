@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2016 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,18 +35,18 @@ public class CradlepointProtocolDecoder extends BaseProtocolDecoder {
 
     private static final Pattern PATTERN = new PatternBuilder()
             .expression("([^,]+),")              // id
-            .number("(dd)(dd)(dd),")             // time
+            .number("(d{1,6}),")                 // time (hhmmss)
             .number("(d+)(dd.d+),")              // latitude
             .expression("([NS]),")
             .number("(d+)(dd.d+),")              // longitude
             .expression("([EW]),")
             .number("(d+.d+)?,")                 // speed
             .number("(d+.d+)?,")                 // course
-            .expression("([^,]+),")              // carrier
+            .expression("([^,]+)?,")             // carrier
             .expression("([^,]+)?,")             // serdis
-            .number("(-?d+),")                   // rsrp
-            .number("(-?d+),")                   // dbm
-            .number("(-?d+),")                   // rsrq
+            .number("(-?d+)?,")                  // rsrp
+            .number("(-?d+)?,")                  // rssi
+            .number("(-?d+)?,")                  // rsrq
             .expression("([^,]+)?,")             // ecio
             .expression("([^,]+)?")              // wan ip
             .compile();
@@ -60,28 +60,33 @@ public class CradlepointProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
-
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
             return null;
         }
+
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
-        DateBuilder dateBuilder = new DateBuilder(new Date())
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
+        int time = parser.nextInt();
+        DateBuilder dateBuilder = new DateBuilder(new Date());
+        dateBuilder.setHour(time / 100 / 100);
+        dateBuilder.setMinute(time / 100 % 100);
+        dateBuilder.setSecond(time % 100);
         position.setTime(dateBuilder.getDate());
 
         position.setValid(true);
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
 
-        parser.skip(4);
-
-        position.set(Position.KEY_RSSI, parser.next());
+        position.set("carrid", parser.next());
+        position.set("serdis", parser.next());
+        position.set("rsrp", parser.next());
+        position.set("dbm", parser.next());
+        position.set("rsrq", parser.next());
+        position.set("ecio", parser.next());
 
         return position;
     }

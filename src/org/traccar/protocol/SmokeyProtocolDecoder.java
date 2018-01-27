@@ -84,11 +84,10 @@ public class SmokeyProtocolDecoder extends BaseProtocolDecoder {
 
         if (type == MSG_DATE_RECORD) {
 
-            buf.readUnsignedShort(); // firmware version
-
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
+
+            position.set(Position.KEY_VERSION_FW, buf.readUnsignedShort());
 
             int status = buf.readUnsignedShort();
             position.set(Position.KEY_STATUS, status);

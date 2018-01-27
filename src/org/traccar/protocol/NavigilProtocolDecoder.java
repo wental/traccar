@@ -81,33 +81,32 @@ public class NavigilProtocolDecoder extends BaseProtocolDecoder {
 
     private Position parseUnitReport(
             DeviceSession deviceSession, ChannelBuffer buf, int sequenceNumber) {
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         position.setValid(true);
         position.set(Position.KEY_INDEX, sequenceNumber);
         position.setDeviceId(deviceSession.getDeviceId());
 
         buf.readUnsignedShort(); // report trigger
-        buf.readUnsignedShort(); // flags
+        position.set(Position.KEY_FLAGS, buf.readUnsignedShort());
 
         position.setLatitude(buf.readInt() * 0.0000001);
         position.setLongitude(buf.readInt() * 0.0000001);
         position.setAltitude(buf.readUnsignedShort());
 
-        buf.readUnsignedShort(); // satellites in fix
-        buf.readUnsignedShort(); // satellites in track
-        buf.readUnsignedShort(); // GPS antenna state
+        position.set(Position.KEY_SATELLITES, buf.readUnsignedShort());
+        position.set(Position.KEY_SATELLITES_VISIBLE, buf.readUnsignedShort());
+        position.set("gpsAntennaState", buf.readUnsignedShort());
 
         position.setSpeed(buf.readUnsignedShort() * 0.194384);
         position.setCourse(buf.readUnsignedShort());
 
-        buf.readUnsignedInt(); // distance
-        buf.readUnsignedInt(); // delta distance
+        position.set(Position.KEY_ODOMETER, buf.readUnsignedInt());
+        position.set(Position.KEY_DISTANCE, buf.readUnsignedInt());
 
         position.set(Position.KEY_BATTERY, buf.readUnsignedShort() * 0.001);
 
-        buf.readUnsignedShort(); // battery charger status
+        position.set(Position.KEY_CHARGE, buf.readUnsignedShort());
 
         position.setTime(convertTimestamp(buf.readUnsignedInt()));
 
@@ -116,8 +115,7 @@ public class NavigilProtocolDecoder extends BaseProtocolDecoder {
 
     private Position parseTg2Report(
             DeviceSession deviceSession, ChannelBuffer buf, int sequenceNumber) {
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         position.setValid(true);
         position.set(Position.KEY_INDEX, sequenceNumber);
@@ -133,19 +131,20 @@ public class NavigilProtocolDecoder extends BaseProtocolDecoder {
         position.setLongitude(buf.readInt() * 0.0000001);
         position.setAltitude(buf.readUnsignedShort());
 
-        buf.readUnsignedByte(); // satellites in fix
-        buf.readUnsignedByte(); // satellites in track
+        position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
+        position.set(Position.KEY_SATELLITES_VISIBLE, buf.readUnsignedByte());
 
         position.setSpeed(buf.readUnsignedShort() * 0.194384);
         position.setCourse(buf.readUnsignedShort());
 
-        buf.readUnsignedInt(); // distance
-        buf.readUnsignedShort(); // maximum speed
-        buf.readUnsignedShort(); // minimum speed
+        position.set(Position.KEY_ODOMETER, buf.readUnsignedInt());
+        position.set("maximumSpeed", buf.readUnsignedShort());
+        position.set("minimumSpeed", buf.readUnsignedShort());
 
-        buf.readUnsignedShort(); // VSAUT1 voltage
-        buf.readUnsignedShort(); // VSAUT2 voltage
-        buf.readUnsignedShort(); // solar voltage
+        position.set(Position.PREFIX_IO + 1, buf.readUnsignedShort()); // VSAUT1 voltage
+        position.set(Position.PREFIX_IO + 2, buf.readUnsignedShort()); // VSAUT2 voltage
+        position.set(Position.PREFIX_IO + 3, buf.readUnsignedShort()); // solar voltage
+
         position.set(Position.KEY_BATTERY, buf.readUnsignedShort() * 0.001);
 
         return position;
@@ -153,8 +152,7 @@ public class NavigilProtocolDecoder extends BaseProtocolDecoder {
 
     private Position parsePositionReport(
             DeviceSession deviceSession, ChannelBuffer buf, int sequenceNumber, long timestamp) {
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         position.set(Position.KEY_INDEX, sequenceNumber);
         position.setDeviceId(deviceSession.getDeviceId());
@@ -170,13 +168,13 @@ public class NavigilProtocolDecoder extends BaseProtocolDecoder {
         position.setValid((flags & 0x80) == 0x80 && (flags & 0x40) == 0x40);
 
         buf.readUnsignedByte(); // reserved
+
         return position;
     }
 
     private Position parsePositionReport2(
             DeviceSession deviceSession, ChannelBuffer buf, int sequenceNumber, long timestamp) {
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         position.set(Position.KEY_INDEX, sequenceNumber);
         position.setDeviceId(deviceSession.getDeviceId());
@@ -193,14 +191,14 @@ public class NavigilProtocolDecoder extends BaseProtocolDecoder {
         position.setValid((flags & 0x80) == 0x80 && (flags & 0x40) == 0x40);
 
         position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
-        buf.readUnsignedInt(); // distance
+        position.set(Position.KEY_ODOMETER, buf.readUnsignedInt());
+
         return position;
     }
 
     private Position parseSnapshot4(
             DeviceSession deviceSession, ChannelBuffer buf, int sequenceNumber) {
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         position.set(Position.KEY_INDEX, sequenceNumber);
         position.setDeviceId(deviceSession.getDeviceId());
@@ -219,18 +217,18 @@ public class NavigilProtocolDecoder extends BaseProtocolDecoder {
         position.setLongitude(buf.readInt() * 0.0000001);
         position.setAltitude(buf.readUnsignedShort());
 
-        buf.readUnsignedByte(); // satellites in fix
-        buf.readUnsignedByte(); // satellites in track
+        position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
+        position.set(Position.KEY_SATELLITES_VISIBLE, buf.readUnsignedByte());
 
         position.setSpeed(buf.readUnsignedShort() * 0.194384);
         position.setCourse(buf.readUnsignedShort() * 0.1);
 
-        buf.readUnsignedByte(); // maximum speed
-        buf.readUnsignedByte(); // minimum speed
-        buf.readUnsignedInt(); // distance
+        position.set("maximumSpeed", buf.readUnsignedByte());
+        position.set("minimumSpeed", buf.readUnsignedByte());
+        position.set(Position.KEY_ODOMETER, buf.readUnsignedInt());
 
-        buf.readUnsignedByte(); // supply voltage 1
-        buf.readUnsignedByte(); // supply voltage 2
+        position.set(Position.PREFIX_IO + 1, buf.readUnsignedByte()); // supply voltage 1
+        position.set(Position.PREFIX_IO + 2, buf.readUnsignedByte()); // supply voltage 2
         position.set(Position.KEY_BATTERY, buf.readUnsignedShort() * 0.001);
 
         return position;
@@ -238,8 +236,7 @@ public class NavigilProtocolDecoder extends BaseProtocolDecoder {
 
     private Position parseTrackingData(
             DeviceSession deviceSession, ChannelBuffer buf, int sequenceNumber, long timestamp) {
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         position.set(Position.KEY_INDEX, sequenceNumber);
         position.setDeviceId(deviceSession.getDeviceId());
@@ -258,11 +255,10 @@ public class NavigilProtocolDecoder extends BaseProtocolDecoder {
         position.setSpeed(UnitsConverter.knotsFromKph(buf.readUnsignedByte()));
         position.setCourse(buf.readUnsignedByte() * 2.0);
 
-        buf.readUnsignedByte(); // satellites in fix
-
+        position.set(Position.KEY_SATELLITES, buf.readUnsignedByte());
         position.set(Position.KEY_BATTERY, buf.readUnsignedShort() * 0.001);
+        position.set(Position.KEY_ODOMETER, buf.readUnsignedInt());
 
-        buf.readUnsignedInt(); // distance
         return position;
     }
 

@@ -49,7 +49,7 @@ public class TytanProtocolDecoder extends BaseProtocolDecoder {
 
             switch (type) {
                 case 2:
-                    position.set(Position.KEY_TRIP_ODOMETER, buf.readUnsignedMedium());
+                    position.set(Position.KEY_ODOMETER_TRIP, buf.readUnsignedMedium());
                     break;
                 case 5:
                     position.set(Position.KEY_INPUT, buf.readUnsignedByte());
@@ -84,7 +84,7 @@ public class TytanProtocolDecoder extends BaseProtocolDecoder {
                     }
                     break;
                 case 28:
-                    position.set("weight", buf.readUnsignedShort());
+                    position.set(Position.KEY_AXLE_WEIGHT, buf.readUnsignedShort());
                     buf.readUnsignedByte();
                     break;
                 case 90:
@@ -100,18 +100,18 @@ public class TytanProtocolDecoder extends BaseProtocolDecoder {
                     int fuel = buf.readUnsignedShort();
                     int fuelFormat = fuel >> 14;
                     if (fuelFormat == 1) {
-                        position.set(Position.KEY_FUEL, (fuel & 0x3fff) * 0.4 + "%");
+                        position.set("fuelValue", (fuel & 0x3fff) * 0.4 + "%");
                     } else if (fuelFormat == 2) {
-                        position.set(Position.KEY_FUEL, (fuel & 0x3fff) * 0.5 + " l");
+                        position.set("fuelValue", (fuel & 0x3fff) * 0.5 + " l");
                     } else if (fuelFormat == 3) {
-                        position.set(Position.KEY_FUEL, (fuel & 0x3fff) * -0.5 + " l");
+                        position.set("fuelValue", (fuel & 0x3fff) * -0.5 + " l");
                     }
                     break;
                 case 108:
                     position.set(Position.KEY_OBD_ODOMETER, buf.readUnsignedInt() * 5);
                     break;
                 case 150:
-                    position.set("door", buf.readUnsignedByte());
+                    position.set(Position.KEY_DOOR, buf.readUnsignedByte());
                     break;
                 default:
                     buf.skipBytes(length);
@@ -146,8 +146,7 @@ public class TytanProtocolDecoder extends BaseProtocolDecoder {
 
         while (buf.readableBytes() > 2) {
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
 
             int end = buf.readerIndex() + buf.readUnsignedByte();

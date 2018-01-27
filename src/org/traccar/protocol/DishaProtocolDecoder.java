@@ -18,7 +18,6 @@ package org.traccar.protocol;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.model.Position;
@@ -36,7 +35,7 @@ public class DishaProtocolDecoder extends BaseProtocolDecoder {
             .text("$A#A#")
             .number("(d+)#")                     // imei
             .expression("([AVMX])#")             // validity
-            .number("(dd)(dd)(dd)#")             // time
+            .number("(dd)(dd)(dd)#")             // time (hhmmss)
             .number("(dd)(dd)(dd)#")             // date (ddmmyy)
             .number("(dd)(dd.d+)#")              // latitude
             .expression("([NS])#")
@@ -66,8 +65,7 @@ public class DishaProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
@@ -77,27 +75,24 @@ public class DishaProtocolDecoder extends BaseProtocolDecoder {
 
         position.setValid(parser.next().equals("A"));
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setTime(dateBuilder.getDate());
+        position.setTime(parser.nextDateTime(Parser.DateTimeFormat.HMS_DMY));
 
         position.setLatitude(parser.nextCoordinate());
         position.setLongitude(parser.nextCoordinate());
 
-        position.setSpeed(parser.nextDouble());
-        position.setCourse(parser.nextDouble());
+        position.setSpeed(parser.nextDouble(0));
+        position.setCourse(parser.nextDouble(0));
 
-        position.set(Position.KEY_SATELLITES, parser.next());
-        position.set(Position.KEY_HDOP, parser.next());
-        position.set(Position.KEY_RSSI, parser.next());
-        position.set(Position.KEY_CHARGE, parser.nextInt() == 2);
-        position.set(Position.KEY_BATTERY, parser.next());
+        position.set(Position.KEY_SATELLITES, parser.nextInt());
+        position.set(Position.KEY_HDOP, parser.nextDouble());
+        position.set(Position.KEY_RSSI, parser.nextDouble());
+        position.set(Position.KEY_CHARGE, parser.nextInt(0) == 2);
+        position.set(Position.KEY_BATTERY_LEVEL, parser.nextInt(0));
 
-        position.set(Position.PREFIX_ADC + 1, parser.nextInt());
-        position.set(Position.PREFIX_ADC + 2, parser.nextInt());
+        position.set(Position.PREFIX_ADC + 1, parser.nextInt(0));
+        position.set(Position.PREFIX_ADC + 2, parser.nextInt(0));
 
-        position.set(Position.KEY_ODOMETER, parser.nextDouble() * 1000);
+        position.set(Position.KEY_ODOMETER, parser.nextDouble(0) * 1000);
         position.set(Position.KEY_INPUT, parser.next());
 
         return position;

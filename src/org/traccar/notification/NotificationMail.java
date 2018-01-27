@@ -1,5 +1,6 @@
 /*
- * Copyright 2016 Anton Tananaev (anton@traccar.org)
+ * Copyright 2016 - 2017 Anton Tananaev (anton@traccar.org)
+ * Copyright 2017 Andrey Kunitsyn (andrey@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +24,7 @@ import javax.mail.Session;
 import javax.mail.Transport;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
+import java.util.Date;
 
 import org.traccar.Context;
 import org.traccar.helper.Log;
@@ -41,20 +43,20 @@ public final class NotificationMail {
         if (host != null) {
             properties.put("mail.transport.protocol", provider.getString("mail.transport.protocol", "smtp"));
             properties.put("mail.smtp.host", host);
-            properties.put("mail.smtp.port", provider.getString("mail.smtp.port", "25"));
+            properties.put("mail.smtp.port", String.valueOf(provider.getInteger("mail.smtp.port", 25)));
 
-            String starttlsEnable = provider.getString("mail.smtp.starttls.enable");
+            Boolean starttlsEnable = provider.getBoolean("mail.smtp.starttls.enable");
             if (starttlsEnable != null) {
-                properties.put("mail.smtp.starttls.enable", Boolean.parseBoolean(starttlsEnable));
+                properties.put("mail.smtp.starttls.enable", String.valueOf(starttlsEnable));
             }
-            String starttlsRequired = provider.getString("mail.smtp.starttls.required");
+            Boolean starttlsRequired = provider.getBoolean("mail.smtp.starttls.required");
             if (starttlsRequired != null) {
-                properties.put("mail.smtp.starttls.required", Boolean.parseBoolean(starttlsRequired));
+                properties.put("mail.smtp.starttls.required", String.valueOf(starttlsRequired));
             }
 
-            String sslEnable = provider.getString("mail.smtp.ssl.enable");
+            Boolean sslEnable = provider.getBoolean("mail.smtp.ssl.enable");
             if (sslEnable != null) {
-                properties.put("mail.smtp.ssl.enable", Boolean.parseBoolean(sslEnable));
+                properties.put("mail.smtp.ssl.enable", String.valueOf(sslEnable));
             }
             String sslTrust = provider.getString("mail.smtp.ssl.trust");
             if (sslTrust != null) {
@@ -65,8 +67,6 @@ public final class NotificationMail {
             if (sslProtocols != null) {
                 properties.put("mail.smtp.ssl.protocols", sslProtocols);
             }
-
-            properties.put("mail.smtp.auth", provider.getString("mail.smtp.auth"));
 
             String username = provider.getString("mail.smtp.username");
             if (username != null) {
@@ -87,13 +87,16 @@ public final class NotificationMail {
     public static void sendMailSync(long userId, Event event, Position position) throws MessagingException {
         User user = Context.getPermissionsManager().getUser(userId);
 
-        Properties properties = getProperties(new PropertiesProvider(Context.getConfig()));
-        if (!properties.containsKey("mail.smtp.host")) {
+        Properties properties = null;
+        if (!Context.getConfig().getBoolean("mail.smtp.ignoreUserConfig")) {
             properties = getProperties(new PropertiesProvider(user));
-            if (!properties.containsKey("mail.smtp.host")) {
-                Log.warning("No SMTP configuration found");
-                return;
-            }
+        }
+        if (properties == null || !properties.containsKey("mail.smtp.host")) {
+            properties = getProperties(new PropertiesProvider(Context.getConfig()));
+        }
+        if (!properties.containsKey("mail.smtp.host")) {
+            Log.warning("No SMTP configuration found");
+            return;
         }
 
         Session session = Session.getInstance(properties);
@@ -106,12 +109,14 @@ public final class NotificationMail {
         }
 
         message.addRecipient(Message.RecipientType.TO, new InternetAddress(user.getEmail()));
-        MailMessage mailMessage = NotificationFormatter.formatMessage(userId, event, position);
+        MailMessage mailMessage = NotificationFormatter.formatMailMessage(userId, event, position);
         message.setSubject(mailMessage.getSubject());
+        message.setSentDate(new Date());
         message.setContent(mailMessage.getBody(), "text/html; charset=utf-8");
 
         Transport transport = session.getTransport();
         try {
+            Context.getStatisticsManager().registerMail();
             transport.connect(
                     properties.getProperty("mail.smtp.host"),
                     properties.getProperty("mail.smtp.username"),

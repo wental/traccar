@@ -1,5 +1,5 @@
 /*
- * Copyright 2013 - 2015 Anton Tananaev (anton@traccar.org)
+ * Copyright 2013 - 2017 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.traccar.helper.BitUtil;
 import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
+import org.traccar.helper.UnitsConverter;
 import org.traccar.model.Position;
 
 import java.net.SocketAddress;
@@ -38,16 +39,10 @@ public class EasyTrackProtocolDecoder extends BaseProtocolDecoder {
             .number("(d+),")                     // imei
             .expression("([^,]{2}),")            // command
             .expression("([AV]),")               // validity
-            .number("(xx)")                      // year
-            .number("(xx)")                      // month
-            .number("(xx),")                     // day
-            .number("(xx)")                      // hours
-            .number("(xx)")                      // minutes
-            .number("(xx),")                     // seconds
-            .number("(x)")
-            .number("(x{7}),")                   // latitude
-            .number("(x)")
-            .number("(x{7}),")                   // longitude
+            .number("(xx)(xx)(xx),")             // date (yymmdd)
+            .number("(xx)(xx)(xx),")             // time (hhmmss)
+            .number("(x)(x{7}),")                // latitude
+            .number("(x)(x{7}),")                // longitude
             .number("(x{4}),")                   // speed
             .number("(x{4}),")                   // course
             .number("(x{8}),")                   // status
@@ -68,8 +63,7 @@ public class EasyTrackProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
@@ -77,37 +71,37 @@ public class EasyTrackProtocolDecoder extends BaseProtocolDecoder {
         }
         position.setDeviceId(deviceSession.getDeviceId());
 
-        position.set("command", parser.next());
+        position.set(Position.KEY_COMMAND, parser.next());
 
         position.setValid(parser.next().equals("A"));
 
         DateBuilder dateBuilder = new DateBuilder()
-                .setDate(parser.nextInt(16), parser.nextInt(16), parser.nextInt(16))
-                .setTime(parser.nextInt(16), parser.nextInt(16), parser.nextInt(16));
+                .setDate(parser.nextHexInt(0), parser.nextHexInt(0), parser.nextHexInt(0))
+                .setTime(parser.nextHexInt(0), parser.nextHexInt(0), parser.nextHexInt(0));
         position.setTime(dateBuilder.getDate());
 
-        if (BitUtil.check(parser.nextInt(16), 3)) {
-            position.setLatitude(-parser.nextInt(16) / 600000.0);
+        if (BitUtil.check(parser.nextHexInt(0), 3)) {
+            position.setLatitude(-parser.nextHexInt(0) / 600000.0);
         } else {
-            position.setLatitude(parser.nextInt(16) / 600000.0);
+            position.setLatitude(parser.nextHexInt(0) / 600000.0);
         }
 
-        if (BitUtil.check(parser.nextInt(16), 3)) {
-            position.setLongitude(-parser.nextInt(16) / 600000.0);
+        if (BitUtil.check(parser.nextHexInt(0), 3)) {
+            position.setLongitude(-parser.nextHexInt(0) / 600000.0);
         } else {
-            position.setLongitude(parser.nextInt(16) / 600000.0);
+            position.setLongitude(parser.nextHexInt(0) / 600000.0);
         }
 
-        position.setSpeed(parser.nextInt(16) / 100.0);
-        position.setCourse(parser.nextInt(16) / 100.0);
+        position.setSpeed(UnitsConverter.knotsFromKph(parser.nextHexInt(0) / 100.0));
+        position.setCourse(parser.nextHexInt(0) / 100.0);
 
         position.set(Position.KEY_STATUS, parser.next());
         position.set("signal", parser.next());
-        position.set(Position.KEY_POWER, parser.nextDouble());
-        position.set("oil", parser.nextInt(16));
-        position.set(Position.KEY_ODOMETER, parser.nextInt(16) * 100);
+        position.set(Position.KEY_POWER, parser.nextDouble(0));
+        position.set("oil", parser.nextHexInt(0));
+        position.set(Position.KEY_ODOMETER, parser.nextHexInt(0) * 100);
 
-        position.setAltitude(parser.nextDouble());
+        position.setAltitude(parser.nextDouble(0));
 
         return position;
     }

@@ -11,6 +11,39 @@ public class Gps103ProtocolDecoderTest extends ProtocolTest {
         Gps103ProtocolDecoder decoder = new Gps103ProtocolDecoder(new Gps103Protocol());
 
         verifyAttributes(decoder, text(
+                "imei:862106025092216,OBD,170605095949,195874,,370.8,808,066,30.0%,+87,13.0%,02444,14.3,,,,;"));
+
+        verifyNull(decoder, text(
+                "imei:868683027825532,OBD,170613203014,,,,0,0,0.00%,0,0.00%,0,0.00,,,,;"));
+
+        verifyAttributes(decoder, text(
+                "imei:862106025092216,OBD,170612165656,196043,,145803.9,,000,0.0%,+,0.0%,00000,12.6,,,,;"));
+
+        verifyAttributes(decoder, text(
+                "imei:862106025092216,OBD,170605095949,195874,,370.8,808,066,30.0%,+87,13.0%,02444,14.3,,,,;"));
+
+        verifyPosition(decoder, text(
+                "imei:353451044508750,DTC,0809231929,,F,055403.000,A,2233.1870,N,11354.3067,E,0.00,30.1,,1,0,10.5%,P0021,;"));
+
+        verifyPosition(decoder, text(
+                "imei:353451044508750,oil1,0809231929,,F,055403.000,A,2233.1870,N,11354.3067,E,0.00,,,,51.6,41.7,;"));
+
+        verifyPosition(decoder, text(
+                "imei:353451044508750,oil2,0809231929,,F,055403.000,A,2233.1870,N,11354.3067,E,0.00,,,,51.6,41.7,;"));
+
+        verifyPosition(decoder, text(
+                "imei:353451044508750,oil 51.67,0809231929,,F,055403.000,A,2233.1870,N,11354.3067,E,0.00,,;"));
+
+        verifyPosition(decoder, text(
+                "imei:353451044508750,T:+28.0,0809231929,,F,055403.000,A,2233.1870,N,11354.3067,E,0.00,,;"));
+
+        verifyPosition(decoder, text(
+                "imei:353451044508750,bonnet alarm,0809231929,,F,055403.000,A,2233.1870,N,11354.3067,E,0.00,,;"));
+
+        verifyPosition(decoder, text(
+                "imei:353451044508750,footbrake alarm,0809231929,,F,055403.000,A,2233.1870,N,11354.3067,E,0.00,,;"));
+
+        verifyPosition(decoder, text(
                 "imei:862106021237716,ac alarm,1611291645,,F,204457.000,A,1010.2783,N,06441.0274,W,0.00,,;"));
 
         verifyAttributes(decoder, text(
@@ -31,7 +64,7 @@ public class Gps103ProtocolDecoderTest extends ProtocolTest {
         verifyPosition(decoder, text(
                 "359769031878322imei:359769031878322,tracker,1602160718,2,F,221811.000,A,1655.2193,S,14546.6722,E,0.00,,"));
 
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "imei:865328021049167,OBD,141118115036,,,0.0,,000,0.0%,+,0.0%,00000,,,,,"));
 
         verifyAttributes(decoder, text(
@@ -65,15 +98,15 @@ public class Gps103ProtocolDecoderTest extends ProtocolTest {
                 position("2015-10-27 01:15:31.000", true, 60.33830, 25.10323));
 
         // Log on request
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "##,imei:359586015829802,A"));
 
         // Heartbeat package
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "359586015829802"));
 
         // No GPS signal
-        verifyNothing(decoder, text(
+        verifyNull(decoder, text(
                 "imei:359586015829802,tracker,000000000,13554900601,L,;"));
 
         verifyPosition(decoder, text(

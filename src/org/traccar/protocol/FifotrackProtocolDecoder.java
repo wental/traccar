@@ -18,7 +18,6 @@ package org.traccar.protocol;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.DeviceSession;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.helper.UnitsConverter;
@@ -42,8 +41,8 @@ public class FifotrackProtocolDecoder extends BaseProtocolDecoder {
             .number("x+,")                       // index
             .expression("[^,]+,")                // type
             .number("(d+)?,")                    // alarm
-            .number("(dd)(dd)(dd)")              // date
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dd)(dd)(dd)")              // date (yymmdd)
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .number("([AV]),")                   // validity
             .number("(-?d+.d+),")                // latitude
             .number("(-?d+.d+),")                // longitude
@@ -79,42 +78,38 @@ public class FifotrackProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
-        Position position = new Position();
-        position.setProtocol(getProtocolName());
+        Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
-        parser.next(); // alarm
+        position.set(Position.KEY_ALARM, parser.next());
 
-        DateBuilder dateBuilder = new DateBuilder()
-                .setDate(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-        position.setTime(dateBuilder.getDate());
+        position.setTime(parser.nextDateTime());
 
         position.setValid(parser.next().equals("A"));
-        position.setLatitude(parser.nextDouble());
-        position.setLongitude(parser.nextDouble());
-        position.setSpeed(UnitsConverter.knotsFromKph(parser.nextInt()));
-        position.setCourse(parser.nextInt());
-        position.setAltitude(parser.nextInt());
+        position.setLatitude(parser.nextDouble(0));
+        position.setLongitude(parser.nextDouble(0));
+        position.setSpeed(UnitsConverter.knotsFromKph(parser.nextInt(0)));
+        position.setCourse(parser.nextInt(0));
+        position.setAltitude(parser.nextInt(0));
 
-        position.set(Position.KEY_ODOMETER, parser.nextLong());
-        position.set(Position.KEY_STATUS, parser.nextInt(16));
+        position.set(Position.KEY_ODOMETER, parser.nextLong(0));
+        position.set(Position.KEY_STATUS, parser.nextHexInt(0));
         if (parser.hasNext()) {
-            position.set(Position.KEY_INPUT, parser.nextInt(16));
+            position.set(Position.KEY_INPUT, parser.nextHexInt(0));
         }
         if (parser.hasNext()) {
-            position.set(Position.KEY_OUTPUT, parser.nextInt(16));
+            position.set(Position.KEY_OUTPUT, parser.nextHexInt(0));
         }
 
         position.setNetwork(new Network(CellTower.from(
-                parser.nextInt(), parser.nextInt(), parser.nextInt(16), parser.nextInt(16))));
+                parser.nextInt(0), parser.nextInt(0), parser.nextHexInt(0), parser.nextHexInt(0))));
 
         String[] adc = parser.next().split("\\|");
         for (int i = 0; i < adc.length; i++) {
             position.set(Position.PREFIX_ADC + (i + 1), Integer.parseInt(adc[i], 16));
         }
 
-        position.set(Position.KEY_RFID, parser.next());
+        position.set(Position.KEY_DRIVER_UNIQUE_ID, parser.next());
 
         if (parser.hasNext()) {
             String[] sensors = parser.next().split("\\|");

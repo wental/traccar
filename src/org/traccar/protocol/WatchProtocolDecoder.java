@@ -15,11 +15,12 @@
  */
 package org.traccar.protocol;
 
+import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
+import org.traccar.Context;
 import org.traccar.DeviceSession;
 import org.traccar.helper.BitUtil;
-import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.helper.UnitsConverter;
@@ -29,6 +30,7 @@ import org.traccar.model.Position;
 import org.traccar.model.WifiAccessPoint;
 
 import java.net.SocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.regex.Pattern;
 
@@ -38,19 +40,9 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
         super(protocol);
     }
 
-    private static final Pattern PATTERN = new PatternBuilder()
-            .text("[")
-            .expression("(..)").text("*")        // manufacturer
-            .number("(d+)").text("*")            // equipment id
-            .number("xxxx").text("*")            // length
-            .expression("([^,]+)")               // type
-            .expression("(.*)")                  // content
-            .compile();
-
     private static final Pattern PATTERN_POSITION = new PatternBuilder()
-            .text(",")
             .number("(dd)(dd)(dd),")             // date (ddmmyy)
-            .number("(dd)(dd)(dd),")             // time
+            .number("(dd)(dd)(dd),")             // time (hhmmss)
             .expression("([AV]),")               // validity
             .number(" *(-?d+.d+),")              // latitude
             .expression("([NS]),")
@@ -65,8 +57,7 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
             .number("(d+),")                     // steps
             .number("d+,")                       // tumbles
             .number("(x+),")                     // status
-            .expression("([^\\]]*)")             // cell and wifi
-            .text("]").optional()
+            .expression("(.*)")                  // cell and wifi
             .compile();
 
     private void sendResponse(Channel channel, String manufacturer, String id, String content) {
@@ -93,6 +84,10 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
             return Position.ALARM_GEOFENCE_EXIT;
         } else if (BitUtil.check(status, 19)) {
             return Position.ALARM_GEOFENCE_ENTER;
+        } else if (BitUtil.check(status, 20)) {
+            return Position.ALARM_REMOVING;
+        } else if (BitUtil.check(status, 21)) {
+            return Position.ALARM_FALL_DOWN;
         }
         return null;
     }
@@ -133,74 +128,88 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
     protected Object decode(
             Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
 
-        Parser parser = new Parser(PATTERN, (String) msg);
-        if (!parser.matches()) {
-            return null;
-        }
+        ChannelBuffer buf = (ChannelBuffer) msg;
 
-        String manufacturer = parser.next();
-        String id = parser.next();
+        buf.skipBytes(1); // header
+        String manufacturer = buf.readBytes(2).toString(StandardCharsets.US_ASCII);
+        buf.skipBytes(1); // delimiter
+
+        String id = buf.readBytes(10).toString(StandardCharsets.US_ASCII);
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, id);
         if (deviceSession == null) {
             return null;
         }
 
-        String type = parser.next();
-        String content = parser.next();
+        buf.skipBytes(1); // delimiter
+        buf.skipBytes(4); // length
+        buf.skipBytes(1); // delimiter
+
+        buf.writerIndex(buf.writerIndex() - 1); // ignore ending
+
+        int contentIndex = buf.indexOf(buf.readerIndex(), buf.writerIndex(), (byte) ',');
+        if (contentIndex < 0) {
+            contentIndex = buf.writerIndex();
+        }
+
+        String type = buf.readBytes(contentIndex - buf.readerIndex()).toString(StandardCharsets.US_ASCII);
+
+        if (contentIndex < buf.writerIndex()) {
+            buf.readerIndex(contentIndex + 1);
+        }
 
         if (type.equals("LK")) {
 
             sendResponse(channel, manufacturer, id, "LK");
 
-            if (!content.isEmpty()) {
-                String[] values = content.split(",");
-                if (values.length >= 4) {
-                    Position position = new Position();
-                    position.setProtocol(getProtocolName());
+            if (buf.readable()) {
+                String[] values = buf.toString(StandardCharsets.US_ASCII).split(",");
+                if (values.length >= 3) {
+                    Position position = new Position(getProtocolName());
                     position.setDeviceId(deviceSession.getDeviceId());
 
                     getLastLocation(position, null);
 
-                    position.set(Position.KEY_BATTERY, values[3]);
+                    position.set(Position.KEY_BATTERY_LEVEL, Integer.parseInt(values[2]));
 
                     return position;
                 }
             }
 
-        } else if (type.equals("UD") || type.equals("UD2") || type.equals("AL")) {
+        } else if (type.equals("UD") || type.equals("UD2") || type.equals("UD3")
+                || type.equals("AL") || type.equals("WT")) {
 
             if (type.equals("AL")) {
                 sendResponse(channel, manufacturer, id, "AL");
             }
 
-            parser = new Parser(PATTERN_POSITION, content);
+            Parser parser = new Parser(PATTERN_POSITION, buf.toString(StandardCharsets.US_ASCII));
             if (!parser.matches()) {
                 return null;
             }
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
 
-            DateBuilder dateBuilder = new DateBuilder()
-                    .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt())
-                    .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-            position.setTime(dateBuilder.getDate());
+            position.setTime(parser.nextDateTime(Parser.DateTimeFormat.DMY_HMS));
 
             position.setValid(parser.next().equals("A"));
             position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
             position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
-            position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble()));
-            position.setCourse(parser.nextDouble());
-            position.setAltitude(parser.nextDouble());
+            position.setSpeed(UnitsConverter.knotsFromKph(parser.nextDouble(0)));
+            position.setCourse(parser.nextDouble(0));
+            position.setAltitude(parser.nextDouble(0));
 
-            position.set(Position.KEY_SATELLITES, parser.nextInt());
-            position.set(Position.KEY_RSSI, parser.nextInt());
-            position.set(Position.KEY_BATTERY, parser.nextInt());
+            position.set(Position.KEY_SATELLITES, parser.nextInt(0));
+            position.set(Position.KEY_RSSI, parser.nextInt(0));
+            position.set(Position.KEY_BATTERY_LEVEL, parser.nextInt(0));
 
-            position.set("steps", parser.nextInt());
+            position.set(Position.KEY_STEPS, parser.nextInt(0));
 
-            position.set(Position.KEY_ALARM, decodeAlarm(parser.nextInt(16)));
+            int status = parser.nextHexInt(0);
+            position.set(Position.KEY_ALARM, decodeAlarm(status));
+            if (BitUtil.check(status, 4)) {
+                position.set(Position.KEY_MOTION, true);
+            }
 
             decodeTail(position, parser.next());
 
@@ -210,16 +219,46 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
 
             sendResponse(channel, manufacturer, id, "TKQ");
 
-        } else if (type.equals("PULSE")) {
+        } else if (type.equals("PULSE") || type.equals("heart")) {
 
-            Position position = new Position();
-            position.setProtocol(getProtocolName());
+            if (buf.readable()) {
+
+                Position position = new Position(getProtocolName());
+                position.setDeviceId(deviceSession.getDeviceId());
+
+                getLastLocation(position, new Date());
+
+                position.setValid(false);
+                String pulse = buf.toString(StandardCharsets.US_ASCII);
+                position.set("pulse", pulse);
+                position.set(Position.KEY_RESULT, pulse);
+
+                return position;
+
+            }
+
+        } else if (type.equals("img")) {
+
+            Position position = new Position(getProtocolName());
             position.setDeviceId(deviceSession.getDeviceId());
-            getLastLocation(position, new Date());
-            position.setValid(false);
-            String pulse = content.substring(1);
-            position.set("pulse", pulse);
-            position.set(Position.KEY_RESULT, pulse);
+
+            getLastLocation(position, null);
+
+            int timeIndex = buf.indexOf(buf.readerIndex(), buf.writerIndex(), (byte) ',');
+            buf.readerIndex(timeIndex + 12 + 2);
+            position.set(Position.KEY_IMAGE, Context.getMediaManager().writeFile(id, buf, "jpg"));
+
+            return position;
+
+        } else if (type.equals("TK")) {
+
+            Position position = new Position(getProtocolName());
+            position.setDeviceId(deviceSession.getDeviceId());
+
+            getLastLocation(position, null);
+
+            position.set(Position.KEY_AUDIO, Context.getMediaManager().writeFile(id, buf, "amr"));
+
             return position;
 
         }
