@@ -17,6 +17,7 @@ package org.traccar.protocol;
 
 import org.jboss.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
+import org.traccar.Context;
 import org.traccar.DeviceSession;
 import org.traccar.helper.BitUtil;
 import org.traccar.helper.DateBuilder;
@@ -27,8 +28,11 @@ import org.traccar.model.CellTower;
 import org.traccar.model.Network;
 import org.traccar.model.Position;
 import org.traccar.model.WifiAccessPoint;
+import org.traccar.model.Device;
 
 import java.net.SocketAddress;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.regex.Pattern;
 
@@ -108,6 +112,10 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
         int mcc = Integer.parseInt(values[index++]);
         int mnc = Integer.parseInt(values[index++]);
 
+        /** wentao add it for zone time automatically */
+        network.setHomeMobileCountryCode(mcc);
+        network.setHomeMobileNetworkCode(mnc);
+
         for (int i = 0; i < cellCount; i++) {
             network.addCellTower(CellTower.from(mcc, mnc,
                     Integer.parseInt(values[index++]), Integer.parseInt(values[index++]),
@@ -169,10 +177,6 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
 
         } else if (type.equals("UD") || type.equals("UD2") || type.equals("AL")) {
 
-            if (type.equals("AL")) {
-                sendResponse(channel, manufacturer, id, "AL");
-            }
-
             parser = new Parser(PATTERN_POSITION, content);
             if (!parser.matches()) {
                 return null;
@@ -185,7 +189,12 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
             DateBuilder dateBuilder = new DateBuilder()
                     .setDateReverse(parser.nextInt(), parser.nextInt(), parser.nextInt())
                     .setTime(parser.nextInt(), parser.nextInt(), parser.nextInt());
-            position.setTime(dateBuilder.getDate());
+                    //.setCurrentDate() //
+                    //.setCurrentTime(); //
+            //parser.nextInt();parser.nextInt();parser.nextInt();//
+            //parser.nextInt();parser.nextInt();parser.nextInt();//
+
+            //position.setTime(dateBuilder.getDate()); /** move to below setTime(nowTime); wentao */
 
             position.setValid(parser.next().equals("A"));
             position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
@@ -204,11 +213,39 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
 
             decodeTail(position, parser.next());
 
+
+            /** below add for indonesia one hour offset of server time, wentao */
+            /** will adjust time according to zone later, wentao */
+
+            Calendar now = Calendar.getInstance();
+            Date nowTime = now.getTime();
+            position.setTime(nowTime);
+
+            int timeOffset = 0;
+
+            Integer currentMcc = position.getNetwork().getHomeMobileCountryCode();
+
+            //510:indonesia   // 420:saudi
+             if (currentMcc == 510) {
+                 timeOffset = -1;
+             } else if (currentMcc == 420) {
+                 timeOffset = -5;
+             }
+             now.add(Calendar.HOUR, timeOffset);
+             Date zoneTime = now.getTime();
+            String timeStr = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(zoneTime);
+            if (type.equals("AL")) {
+                sendResponse(channel, manufacturer, id, "AL, " + timeStr);
+            }
+
             return position;
 
-        } else if (type.equals("TKQ")) {
-
-            sendResponse(channel, manufacturer, id, "TKQ");
+        } else if (type.equals("TK")) {
+            /** wentao add test here for device information reply, find device::model,contact...by uniqueId */
+            Device device = Context.getIdentityManager().getDeviceByUniqueId(id);
+            String devInfo = String.format("TK, Model:%s, Contact:%s, Phone:%s",
+                                            device.getModel(), device.getContact(), device.getPhone());
+            sendResponse(channel, manufacturer, id, devInfo);
 
         } else if (type.equals("PULSE")) {
 

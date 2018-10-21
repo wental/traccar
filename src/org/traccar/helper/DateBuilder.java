@@ -71,6 +71,11 @@ public class DateBuilder {
         Calendar now = Calendar.getInstance(calendar.getTimeZone());
         return setYear(now.get(Calendar.YEAR)).setMonth(now.get(Calendar.MONTH)).setDay(now.get(Calendar.DAY_OF_MONTH));
     }
+/** tommy add */
+    public DateBuilder setCurrentTime() {
+        Calendar now = Calendar.getInstance(calendar.getTimeZone());
+        return setHour(now.get(Calendar.HOUR)).setMinute(now.get(Calendar.MINUTE)).setSecond(now.get(Calendar.SECOND));
+    }
 
     public DateBuilder setHour(int hour) {
         calendar.set(Calendar.HOUR_OF_DAY, hour);
